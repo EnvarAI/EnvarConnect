@@ -1,0 +1,11 @@
+dist/
+node_modules/
+*.tgz
+*.key
+*.token
+*.sqlite3*
+.env*
+**/.env*
+**/private/
+state/
+artifacts/
