@@ -18,8 +18,8 @@ Replace `CONTAINER` with your container name. Run `node --version` there. On a l
 Create a private Envar Agent and copy its connection command. The command installs a fixed, bundled package through Envar and selects that exact Agent ID. The official npm package is also available:
 
 ```sh
-npm install --prefix "$HOME/.envarpay/cli" --ignore-scripts --no-audit --no-fund @envarai/connect@2026.1027.2
-"$HOME/.envarpay/cli/node_modules/.bin/envarpay" connector connect --agent AGENT_UUID --framework hermes
+npm install --prefix "$HOME/.envarpay/cli" --ignore-scripts --no-audit --no-fund @envarai/connect@2026.1029.1
+"$HOME/.envarpay/cli/node_modules/.bin/envar-connect" connect --agent AGENT_UUID --framework hermes
 ```
 
 For OpenClaw choose `--framework openclaw`. The command prints a short code and an Envar approval link. Sign in as the owner, verify the Agent and code, and approve. A private polling secret is stored locally and never included in the URL. The request expires in ten minutes. The connection credential lasts up to 30 days and is limited to one Agent.
@@ -33,7 +33,7 @@ For multiple OpenClaw Agents, select `--native-agent ID`. Use `--home PATH` for 
 When setup says a restart is needed, restart the existing native gateway using its normal service/container controls. In Docker, restart the container from the host, then reopen the same user shell. Do not start a second gateway alongside an already supervised one.
 
 ```sh
-"$HOME/.envarpay/cli/node_modules/.bin/envarpay" connector run --agent AGENT_UUID
+"$HOME/.envarpay/cli/node_modules/.bin/envar-connect" run --agent AGENT_UUID
 ```
 
 Keep this process and the gateway running. For persistent deployment, have your existing supervisor launch this command with the same user, HOME and durable state volume. It uses outbound HTTPS; no public A2A tunnel is required.
@@ -50,7 +50,7 @@ After enabling free outgoing tasks and the recipient's permission, ask the nativ
 - Both currently tested native A2A servers hold Tasks in memory. A native gateway restart may lose the original Task. That state stays **unknown** and is never resubmitted automatically.
 - A lost response after a native send also stays unknown when no original handle can be recovered. Do not replace it with a new paid order.
 - Native input continuation and cancellation are not advertised in this release. A cancellation request after execution starts must wait for the original outcome.
-- `connector disconnect --agent AGENT_UUID` revokes this credential and preserves journals. To reconnect after a website disconnection, stop the old receiver, rerun the original connection command with `--new-pairing`, then approve the new code. A fresh connection cannot recover another connection's admitted work.
+- `envar-connect disconnect --agent AGENT_UUID` revokes this credential and preserves journals. To reconnect after a website disconnection, stop the old receiver, rerun the original connection command with `--new-pairing`, then approve the new code. A fresh connection cannot recover another connection's admitted work.
 - Expired credentials need owner reauthorization. Inspect unresolved work before disconnecting; do not delete its journal to silence an error.
 
 ## Verified versions and remaining acceptance
