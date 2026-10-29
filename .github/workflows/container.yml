@@ -1,0 +1,29 @@
+name: Connector container
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: docker build -t envar-connect:check .
+      - name: Verify the non-root CLI without runtime network access
+        run: |
+          docker run --rm --network none envar-connect:check --version
+          docker run --rm --network none envar-connect:check --help
+          docker run --rm --network none --entrypoint sh envar-connect:check -ec '
+            test "$(id -u)" = 10001
+            test -f /opt/envar-connect/contracts/agent-work/v1/schema.json
+            test ! -d /opt/envar-connect/dist/commerce
+            test -w "$HOME"
+          '
