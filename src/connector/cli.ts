@@ -9,9 +9,10 @@ import { ConnectorLoop } from './loop.js';
 import { connectorMcp } from './mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
-const usage = `Envar Connector\nenvar-connect connect --agent UUID --framework hermes|openclaw [--home PROFILE] [--native-agent main]\nenvar-connect run --agent UUID\nenvar-connect doctor --agent UUID\nenvar-connect status --agent UUID\nenvar-connect disconnect --agent UUID\nAdvanced: use --directory PATH for an existing private state directory. Keep its journal to recover original tasks.`;
+const usageFor = (command: readonly string[]) => `Envar Connector\n${command.join(' ')} connect --agent UUID --framework hermes|openclaw [--home PROFILE] [--native-agent main]\n${command.join(' ')} run --agent UUID\n${command.join(' ')} doctor --agent UUID\n${command.join(' ')} status --agent UUID\n${command.join(' ')} disconnect --agent UUID\nAdvanced: use --directory PATH for an existing private state directory. Keep its journal to recover original tasks.`;
 const output = (value: unknown) => console.log(JSON.stringify(value, null, 2));
-export async function runConnectorCli(args: string[]): Promise<void> {
+export async function runConnectorCli(args: string[], commandPrefix: readonly string[] = ['envar-connect']): Promise<void> {
+  const usage = usageFor(commandPrefix);
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
     agent: { type: 'string' }, framework: { type: 'string' }, home: { type: 'string' }, directory: { type: 'string' },
     origin: { type: 'string' }, 'native-agent': { type: 'string' }, 'runtime-url': { type: 'string' }, connection: { type: 'string' },
@@ -54,7 +55,7 @@ export async function runConnectorCli(args: string[]): Promise<void> {
       service_restart: [...config.runtime.binary, 'gateway', 'restart'],
       foreground_gateway: [...config.runtime.binary, 'gateway', 'run'],
       docker_restart: 'Restart the Agent container from its Docker host; do not run a second gateway.',
-      run: ['envar-connect', 'run', '--directory', directory],
+      run: [...commandPrefix, 'run', '--directory', directory],
       test: config.origin + '/console/agents/' + config.agentId,
       verified: status.readiness.roundtrip_verified === true && !restartRequired, expires_at: config.expiresAt });
     return;
