@@ -1,0 +1,77 @@
+{
+  "name": "@envarai/connect",
+  "version": "2026.1029.1",
+  "description": "Connect your own Agent to Envar: tasks, native adapters and recovery",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./connector/*": {
+      "types": "./dist/connector/*.d.ts",
+      "import": "./dist/connector/*.js"
+    },
+    "./adapters/*": {
+      "types": "./dist/adapters/*.d.ts",
+      "import": "./dist/adapters/*.js"
+    },
+    "./shared": {
+      "types": "./dist/shared/index.d.ts",
+      "import": "./dist/shared/index.js"
+    },
+    "./contracts/*": "./contracts/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "contracts",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EnvarAI/EnvarConnect.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "latest"
+  },
+  "scripts": {
+    "build": "node scripts/generate-work-contract.mjs --check && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
+    "test": "npm run build && node --test test/*.test.mjs scripts/release.test.mjs",
+    "prepack": "npm run build",
+    "version:date": "node scripts/release-version.mjs"
+  },
+  "dependencies": {
+    "@a2a-js/sdk": "1.2.1",
+    "@modelcontextprotocol/sdk": "1.31.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "canonicalize": "2.1.0",
+    "json5": "2.2.3",
+    "yaml": "2.8.2",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "~5.9.3"
+  },
+  "bin": {
+    "envar-connect": "dist/cli.js"
+  },
+  "bundleDependencies": [
+    "@a2a-js/sdk",
+    "@modelcontextprotocol/sdk",
+    "ajv",
+    "ajv-formats",
+    "canonicalize",
+    "json5",
+    "yaml",
+    "zod"
+  ]
+}

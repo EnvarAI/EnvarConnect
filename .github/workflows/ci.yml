@@ -1,0 +1,47 @@
+name: CI
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  connector:
+    name: Connector runtime (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: node scripts/generate-work-contract.mjs --check
+      - run: npm test
+      - name: Build and verify the actual npm tarball
+        run: |
+          artifact="$RUNNER_TEMP/npm-package-${{ matrix.node }}"
+          mkdir -p "$artifact"
+          npm pack --pack-destination "$artifact" --json > "$artifact/pack.json"
+          node scripts/verify-package.mjs "$artifact"
+      - name: Verify migration from the prior published Connector
+        if: matrix.node == '24'
+        run: |
+          curl --fail --silent --show-error --max-time 60 https://registry.npmjs.org/@envarai/envarpay/-/envarpay-2026.1027.2.tgz --output "$RUNNER_TEMP/previous-envarpay.tgz"
+          node scripts/verify-migration.mjs "$RUNNER_TEMP/previous-envarpay.tgz"
+      - name: Check the publishing artifact against npm
+        if: matrix.node == '24'
+        run: node scripts/release.mjs check-npm "$RUNNER_TEMP/npm-package-24"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package-${{ matrix.node }}
+          path: ${{ runner.temp }}/npm-package-${{ matrix.node }}
+          if-no-files-found: error
