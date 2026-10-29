@@ -32,6 +32,11 @@ jobs:
           mkdir -p "$artifact"
           npm pack --pack-destination "$artifact" --json > "$artifact/pack.json"
           node scripts/verify-package.mjs "$artifact"
+      - name: Verify migration from the prior published Connector
+        if: matrix.node == '24'
+        run: |
+          curl --fail --silent --show-error --max-time 60 https://registry.npmjs.org/@envarai/envarpay/-/envarpay-2026.1027.2.tgz --output "$RUNNER_TEMP/previous-envarpay.tgz"
+          node scripts/verify-migration.mjs "$RUNNER_TEMP/previous-envarpay.tgz"
       - name: Check the publishing artifact against npm
         if: matrix.node == '24'
         run: node scripts/release.mjs check-npm "$RUNNER_TEMP/npm-package-24"
