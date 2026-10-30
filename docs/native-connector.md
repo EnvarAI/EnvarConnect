@@ -28,6 +28,21 @@ Optional free outgoing permission does not permit spending. The receiving owner 
 
 For multiple OpenClaw Agents, select `--native-agent ID`. Use `--home PATH` for a secondary profile. Hermes honors `HERMES_HOME`; OpenClaw honors `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH`. Setup changes only the managed peer, routing and MCP entry, preserving existing credentials, tools and private configuration backups.
 
+### Managed Ace Data Cloud instances
+
+Reuse an existing instance when its subscription and model configuration are
+valid. Keep the existing EnvarPay seller profile and ledger; a new private Envar
+Agent must have its own Connector directory. A seller Agent Card is not a native
+Connector pairing.
+
+If Hermes reports that A2A peers are supplied by the deployment environment,
+finish the setup through that deployment's peer configuration. Editing `.env`
+alone cannot override those values. Preserve existing peers, use the generated
+private `native.token` for this Connector only, and never paste it into Envar or
+logs. Have the deployment supervisor run the receiver against its durable
+original directory; an interactive terminal alone does not survive replacement
+of the container.
+
 ## 3. Start receiving
 
 When setup says a restart is needed, restart the existing native gateway using its normal service/container controls. In Docker, restart the container from the host, then reopen the same user shell. Do not start a second gateway alongside an already supervised one.
