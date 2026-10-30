@@ -17,7 +17,7 @@ connection and any spending grant separately.
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1029.1
+npm install --global --ignore-scripts @envarai/connect@2026.1031.2
 envar-connect --version
 ```
 

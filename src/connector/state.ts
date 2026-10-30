@@ -29,7 +29,7 @@ function privateFile(path: string) {
 }
 export class ConnectorJournal {
   private readonly db: DatabaseSync;
-  private lock?: { path: string; nonce: string };
+  private lock?: { path: string; nonce: string; database: DatabaseSync };
   constructor(path: string, readonly binding: ConnectorBinding) {
     if (path !== ':memory:') {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -51,21 +51,43 @@ export class ConnectorJournal {
     if (existing && existing.value !== JSON.stringify(binding)) { this.db.close(); throw new Error('This journal belongs to another Agent or runtime binding'); }
     this.db.prepare("INSERT OR IGNORE INTO connector_meta VALUES ('binding',?)").run(JSON.stringify(binding));
   }
-  /** A stale process can be replaced only after proving that PID no longer exists. */
+  /** A kernel-backed SQLite transaction survives PID reuse and releases on process exit. */
   acquireProcessLock(path: string): void {
     if (this.lock) throw new Error('Connector already owns a process lock');
-    if (existsSync(path)) {
-      privateFile(path);
-      const value = parseStored<{ pid: number; nonce: string }>(readFileSync(path, 'utf8'));
-      if (!Number.isSafeInteger(value.pid) || value.pid < 1) throw new Error('Inspect the original Connector lock');
-      try { process.kill(value.pid, 0); throw new Error('Another Connector process is using this journal'); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
-      unlinkSync(path);
+    const databasePath = path + '.sqlite3';
+    if (existsSync(databasePath)) privateFile(databasePath);
+    const database = new DatabaseSync(databasePath);
+    chmodSync(databasePath, 0o600);
+    try {
+      database.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE;');
+    } catch (error) {
+      database.close();
+      if ([5, 6].includes((error as Error & { errcode?: number }).errcode ?? -1))
+        throw new Error('Another Connector process is using this journal');
+      throw error;
     }
-    const nonce = randomUUID(), fd = openSync(path, 'wx', 0o600);
-    try { writeFileSync(fd, JSON.stringify({ pid: process.pid, nonce }), { flush: true }); }
-    finally { closeSync(fd); }
-    this.lock = { path, nonce };
+    try {
+      if (existsSync(path)) {
+        privateFile(path);
+        const value = parseStored<{ version?: number; pid?: number; nonce?: string }>(readFileSync(path, 'utf8'));
+        if (value.version === 2) {
+          if (typeof value.nonce !== 'string' || !value.nonce) throw new Error('Inspect the original Connector lock');
+          // Acquiring the exclusive transaction proves that no v2 receiver still holds this lock.
+        } else {
+          // A legacy receiver does not hold the SQLite lock. Never displace a live legacy PID.
+          if (value.version !== undefined || !Number.isSafeInteger(value.pid) || value.pid! < 1)
+            throw new Error('Inspect the original Connector lock');
+          try { process.kill(value.pid!, 0); throw new Error('Another Connector process is using this journal'); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
+        }
+        unlinkSync(path);
+      }
+      const nonce = randomUUID(), fd = openSync(path, 'wx', 0o600);
+      // Omit legacy `pid`: old clients must fail closed while a v2 marker exists.
+      try { writeFileSync(fd, JSON.stringify({ version: 2, ownerPid: process.pid, nonce }), { flush: true }); }
+      finally { closeSync(fd); }
+      this.lock = { path, nonce, database };
+    } catch (error) { database.close(); throw error; }
   }
   ingest(delivery: Delivery): void {
     const work = delivery.work;
@@ -155,12 +177,15 @@ export class ConnectorJournal {
   }
   sameObservation(record: LocalWork, observation: unknown): boolean { return record.lastObservation === digest(observation); }
   close(): void {
-    this.db.close();
-    if (this.lock && existsSync(this.lock.path)) {
-      privateFile(this.lock.path);
-      const value = parseStored<{ pid: number; nonce: string }>(readFileSync(this.lock.path, 'utf8'));
-      if (value.nonce === this.lock.nonce) unlinkSync(this.lock.path);
-    }
+    const lock = this.lock;
     this.lock = undefined;
+    try {
+      this.db.close();
+      if (lock && existsSync(lock.path)) {
+        privateFile(lock.path);
+        const value = parseStored<{ nonce: string }>(readFileSync(lock.path, 'utf8'));
+        if (value.nonce === lock.nonce) unlinkSync(lock.path);
+      }
+    } finally { lock?.database.close(); }
   }
 }
