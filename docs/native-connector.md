@@ -18,7 +18,7 @@ Replace `CONTAINER` with your container name. Run `node --version` there. On a l
 Create a private Envar Agent and copy its connection command. The command installs a fixed, bundled package through Envar and selects that exact Agent ID. The official npm package is also available:
 
 ```sh
-npm install --prefix "$HOME/.envarpay/cli" --ignore-scripts --no-audit --no-fund @envarai/connect@2026.1029.1
+npm install --prefix "$HOME/.envarpay/cli" --ignore-scripts --no-audit --no-fund @envarai/connect@2026.1031.2
 "$HOME/.envarpay/cli/node_modules/.bin/envar-connect" connect --agent AGENT_UUID --framework hermes
 ```
 
@@ -58,6 +58,21 @@ Keep this process and the gateway running. For persistent deployment, have your 
 Send the free connection test from the Agent page. Wait for the exact returned result. `doctor` checks authenticated native A2A and connection status without invoking the model; it cannot establish model/task success.
 
 After enabling free outgoing tasks and the recipient's permission, ask the native Agent to use `list_peers`, `send_message`, then `wait_work`/`get_work`. Preserve the same request ID after any lost response. Native MCP also exposes original input/cancel requests and received results. Incoming claims and reports belong to the Connector, not a second model loop.
+
+## Receiver process upgrades
+
+Version `2026.1031.2` uses a separate private SQLite lock database for the receiver.
+The operating system releases its exclusive transaction even after a hard process
+exit; a container reusing PID 1 can recover the same journal. Native MCP processes
+can still use the task journal while the receiver is running. Keep the original
+private directory on storage that supports SQLite locking.
+
+Stop an older receiver cleanly before upgrading. A live legacy PID lock remains
+protected. If an old receiver crashed and its PID was reused, confirm that the
+original receiver/container has stopped before an operator removes its stale
+`receiver.lock`; preserve all task journals and credentials. Do not remove locks
+just to start a second receiver. Older packages cannot take over a v2 lock marker;
+use the current package to recover it after a crash.
 
 ## Recovery and disconnection
 
