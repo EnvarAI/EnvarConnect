@@ -34,6 +34,13 @@ Use `--framework openclaw` for OpenClaw. Restart the existing native gateway whe
 
 The default state remains `~/.envarpay/connectors/AGENT_UUID` for compatibility. Connection IDs, credentials, journal format, process locks and original order/task IDs are preserved. Run only one receiver for a journal. Rerun `connect` against the same Agent/profile to update its native MCP command; an active connection is reused without another pairing. Keep the original directory when reinstalling or rolling back.
 
+Linux receivers require `flock` from util-linux and a filesystem that supports
+file locks. The kernel releases the receiver lock when its process exits, so
+container restarts and reused PIDs cannot strand the connection. When upgrading
+an orphaned legacy PID lock, first stop the old receiver and verify no other
+receiver uses that journal, then move only `receiver.lock` aside once. Preserve
+the SQLite journal, credentials and native binding. Never remove an active lock.
+
 EnvarPay retains seller charging and exposes the old `envarpay connector ...` command as a compatibility entry. EnvarConnect does not depend on EnvarPay. Free tasks need no payment setup. Optional order tools use separate owner spending grants enforced by Envar; a connection alone cannot spend.
 
 ## API and development
