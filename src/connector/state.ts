@@ -1,5 +1,6 @@
 /** Owner-only durable journal. Transport receipts never imply a second execution. */
-import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { dirname } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
@@ -29,7 +30,7 @@ function privateFile(path: string) {
 }
 export class ConnectorJournal {
   private readonly db: DatabaseSync;
-  private lock?: { path: string; nonce: string };
+  private lock?: { path: string; nonce: string; fd?: number };
   constructor(path: string, readonly binding: ConnectorBinding) {
     if (path !== ':memory:') {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -51,9 +52,13 @@ export class ConnectorJournal {
     if (existing && existing.value !== JSON.stringify(binding)) { this.db.close(); throw new Error('This journal belongs to another Agent or runtime binding'); }
     this.db.prepare("INSERT OR IGNORE INTO connector_meta VALUES ('binding',?)").run(JSON.stringify(binding));
   }
-  /** A stale process can be replaced only after proving that PID no longer exists. */
+  /** One receiver per journal; Linux kernel locks survive PID reuse safely. */
   acquireProcessLock(path: string): void {
     if (this.lock) throw new Error('Connector already owns a process lock');
+    if (process.platform === 'linux') {
+      this.acquireKernelLock(path);
+      return;
+    }
     if (existsSync(path)) {
       privateFile(path);
       const value = parseStored<{ pid: number; nonce: string }>(readFileSync(path, 'utf8'));
@@ -66,6 +71,40 @@ export class ConnectorJournal {
     try { writeFileSync(fd, JSON.stringify({ pid: process.pid, nonce }), { flush: true }); }
     finally { closeSync(fd); }
     this.lock = { path, nonce };
+  }
+  private acquireKernelLock(path: string): void {
+    const guard = `${path}.flock`;
+    if (existsSync(guard)) privateFile(guard);
+    const fd = openSync(guard, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+    try {
+      // The child inherits this open file description. Its exit keeps the lock
+      // held by our descriptor; process death releases it even after SIGKILL.
+      const result = spawnSync('flock', ['--nonblock', '3'], { stdio: ['ignore', 'ignore', 'ignore', fd] });
+      if (result.status === 1) throw new Error('Another Connector process is using this journal');
+      if (result.error || result.status !== 0) throw new Error('Linux Connector locking requires util-linux flock and filesystem lock support');
+      if (existsSync(path)) {
+        privateFile(path);
+        const stored = readFileSync(path, 'utf8');
+        const value = parseStored<{ pid: number; nonce: string; locking?: string }>(stored);
+        if (value.locking !== 'flock') {
+          // Do not steal a legacy PID lock during an upgrade. An operator must
+          // confirm an orphaned container lock before moving it aside once.
+          if (!Number.isSafeInteger(value.pid) || value.pid < 1) throw new Error('Inspect the original Connector lock');
+          try { process.kill(value.pid, 0); throw new Error('Another Connector process is using this journal (legacy PID lock)'); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
+        }
+        unlinkSync(path);
+      }
+      const nonce = randomUUID();
+      // Exclusive creation also excludes a legacy receiver racing this upgrade.
+      const metadata = openSync(path, 'wx', 0o600);
+      try { writeFileSync(metadata, JSON.stringify({ pid: process.pid, nonce, locking: 'flock' }), { flush: true }); }
+      finally { closeSync(metadata); }
+      this.lock = { path, nonce, fd };
+    } catch (error) {
+      closeSync(fd);
+      throw error;
+    }
   }
   ingest(delivery: Delivery): void {
     const work = delivery.work;
@@ -156,11 +195,16 @@ export class ConnectorJournal {
   sameObservation(record: LocalWork, observation: unknown): boolean { return record.lastObservation === digest(observation); }
   close(): void {
     this.db.close();
-    if (this.lock && existsSync(this.lock.path)) {
-      privateFile(this.lock.path);
-      const value = parseStored<{ pid: number; nonce: string }>(readFileSync(this.lock.path, 'utf8'));
-      if (value.nonce === this.lock.nonce) unlinkSync(this.lock.path);
+    try {
+      if (this.lock && existsSync(this.lock.path)) {
+        privateFile(this.lock.path);
+        const value = parseStored<{ pid: number; nonce: string }>(readFileSync(this.lock.path, 'utf8'));
+        if (value.nonce === this.lock.nonce) unlinkSync(this.lock.path);
+      }
+    } finally {
+      // The guard inode stays in place while the kernel releases its lock.
+      if (this.lock?.fd !== undefined) closeSync(this.lock.fd);
+      this.lock = undefined;
     }
-    this.lock = undefined;
   }
 }

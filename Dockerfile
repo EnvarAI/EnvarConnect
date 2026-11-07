@@ -16,7 +16,8 @@ COPY --from=build /build/node_modules ./node_modules
 COPY --from=build /build/dist ./dist
 COPY --from=build /build/contracts ./contracts
 COPY --from=build /build/package.json /build/README.md /build/LICENSE ./
-RUN groupadd --gid 10001 envar-connect \
+RUN command -v flock \
+    && groupadd --gid 10001 envar-connect \
     && useradd --uid 10001 --gid 10001 --home-dir /data --no-create-home envar-connect \
     && mkdir /data && chown 10001:10001 /data && chmod 700 /data \
     && printf '#!/bin/sh\nexec node /opt/envar-connect/dist/cli.js "$@"\n' > /usr/local/bin/envar-connect \
