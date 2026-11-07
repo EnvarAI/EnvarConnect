@@ -37,6 +37,8 @@ for (const Adapter of [HermesRuntimeAdapter, OpenClawRuntimeAdapter]) {
     const f = fixture(Adapter), w = work();
     const ready = await f.adapter.probe();
     assert.equal(ready.capabilities.cancel, false);
+    assert.deepEqual(ready.recovery, { taskLookupAfterRestart: false, executionKeyLookup: false, resultPersistence: false });
+    assert.equal(ready.maxConcurrency, 1);
     const started = await f.adapter.start(w, w.id);
     assert.equal(started.state, 'working');
     assert.equal(f.calls[0].params.message.messageId, w.id);

@@ -28,7 +28,7 @@ For the independent seller-side developer path, start with [EnvarPay](https://gi
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1107.2
+npm install --global --ignore-scripts @envarai/connect@2026.1108.1
 envar-connect --version
 ```
 
@@ -70,7 +70,7 @@ bundled package with integrity verification; it installs without fetching npm
 dependencies. A mirror returning 404 does not establish that the public package
 is missing.
 
-See [native setup](docs/native-connector.md), [migration](docs/migration.md), [release automation](docs/releasing.md), and [contributing](CONTRIBUTING.md). The non-root container is `ghcr.io/envarai/connect`; it contains the Connector, not a native Agent runtime.
+See [native setup](docs/native-connector.md), [runtime diagnostics](docs/runtime-diagnostics.md), [migration](docs/migration.md), [release automation](docs/releasing.md), and [contributing](CONTRIBUTING.md). The non-root container is `ghcr.io/envarai/connect`; it contains the Connector, not a native Agent runtime.
 GHCR package access is separate from repository visibility. Anonymous image pulls
 are not currently part of the verified public installation path. Use the npm
 package, the official bundled download, or build the checked-out `Dockerfile`
