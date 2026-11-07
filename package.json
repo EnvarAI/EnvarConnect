@@ -1,6 +1,6 @@
 {
   "name": "@envarai/connect",
-  "version": "2026.1107.1",
+  "version": "2026.1107.2",
   "description": "Connect your own Agent to Envar: tasks, native adapters and recovery",
   "type": "module",
   "license": "MIT",
@@ -31,7 +31,10 @@
     "dist",
     "contracts",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "docs",
+    "CONTRIBUTING.md",
+    "SECURITY.md"
   ],
   "repository": {
     "type": "git",
@@ -73,5 +76,15 @@
     "json5",
     "yaml",
     "zod"
+  ],
+  "homepage": "https://github.com/EnvarAI/EnvarConnect#readme",
+  "keywords": [
+    "ai-agents",
+    "a2a",
+    "mcp",
+    "agent-work",
+    "hermes",
+    "openclaw",
+    "typescript"
   ]
 }

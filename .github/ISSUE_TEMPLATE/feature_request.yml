@@ -1,0 +1,21 @@
+name: Enhancement or adapter proposal
+description: Describe an independently useful, scoped contribution.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem and current workaround
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Proposed scope and compatibility
+      description: Link a contribution brief when applicable. Distinguish protocol fixtures from real runtime evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Reproduction or acceptance plan
+      description: Keep existing task identity, explicit authorization and journal recovery intact.

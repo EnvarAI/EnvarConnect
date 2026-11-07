@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { syncDocVersions } from './sync-doc-versions.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -47,5 +48,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   pkg.version = lock.version = lock.packages[''].version = version;
   writeFileSync(packageFile, JSON.stringify(pkg, null, 2) + '\n');
   writeFileSync(lockFile, JSON.stringify(lock, null, 2) + '\n');
+  syncDocVersions();
   console.log(version);
 }

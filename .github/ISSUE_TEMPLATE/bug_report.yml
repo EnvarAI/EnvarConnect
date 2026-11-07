@@ -1,0 +1,29 @@
+name: Bug report
+description: Reproduce a Connector setup, task or recovery problem.
+body:
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions and environment
+      description: Include Connect, Node, OS/container and native runtime versions. Do not paste credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction and expected behavior
+      description: List the steps and the first unexpected state. Preserve the original operation rather than resubmitting it.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: State queued/claimed/started/unknown/completed as observed. Do not upload journals, tokens, private profiles or prompts.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Report scope
+      options:
+        - label: I removed credentials and private user content from this report.
+          required: true
