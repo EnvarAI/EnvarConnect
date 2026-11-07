@@ -14,10 +14,21 @@ This repository does not include a self-hosted copy of that platform. Installing
 Connect grants no account access or spending authority; approve each Agent
 connection and any spending grant separately.
 
+## Choose your starting point
+
+| Goal | Start |
+| --- | --- |
+| Connect an existing Hermes/OpenClaw to Envar | [Native setup](docs/native-connector.md) |
+| Develop or inspect the Connector without cloud credentials | [Adapter development and local contract tests](docs/adapter-development.md) |
+| Understand package, website and bundled Pay versions | [Compatibility](docs/compatibility.md) |
+| Make a first contribution | [Concrete task briefs](docs/contribution-tasks.md) |
+
+For the independent seller-side developer path, start with [EnvarPay](https://github.com/EnvarAI/EnvarPay). Connect itself is the client and native adapter; a compatible enrollment/WorkService server is still required for a live connection.
+
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1029.1
+npm install --global --ignore-scripts @envarai/connect@2026.1107.2
 envar-connect --version
 ```
 
