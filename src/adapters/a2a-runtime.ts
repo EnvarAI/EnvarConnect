@@ -12,7 +12,10 @@ export class A2ARuntimeAdapter implements RuntimeAdapter {
   async probe(): Promise<RuntimeReadiness> {
     const card = await this.client.probe();
     // The currently supported native plugins retain tasks in memory. Their restart loses those handles.
-    return { adapter: this.key, runtimeVersion: card.version || 'unknown', capabilities: { recover: true, input: false, cancel: false } };
+    return { adapter: this.key, runtimeVersion: card.version || 'unknown',
+      capabilities: { recover: true, input: false, cancel: false },
+      recovery: { taskLookupAfterRestart: false, executionKeyLookup: false, resultPersistence: false },
+      maxConcurrency: 1 };
   }
   private reference(reference: RuntimeReference): NativeTaskReference {
     if (reference.adapter !== this.key || reference.version !== 1 || !reference.value ||

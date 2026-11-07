@@ -8,6 +8,7 @@ import { privateDirectory, privateJson, writePrivate, writePrivateJson } from '.
 import { ConnectorLoop } from './loop.js';
 import { connectorMcp } from './mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { CONNECTOR_VERSION } from './runtime-report.js';
 
 const usageFor = (command: readonly string[]) => `Envar Connector\n${command.join(' ')} connect --agent UUID --framework hermes|openclaw [--home PROFILE] [--native-agent main]\n${command.join(' ')} run --agent UUID\n${command.join(' ')} doctor --agent UUID\n${command.join(' ')} status --agent UUID\n${command.join(' ')} disconnect --agent UUID\nAdvanced: use --directory PATH for an existing private state directory. Keep its journal to recover original tasks.`;
 const output = (value: unknown) => console.log(JSON.stringify(value, null, 2));
@@ -74,7 +75,9 @@ export async function runConnectorCli(args: string[], commandPrefix: readonly st
   if (command === 'status') { output(await client.status()); return; }
   if (command === 'doctor') {
     const connection = await client.status(), runtime = await runtimeAdapter(directory, config).probe();
-    output({ connection_id: connection.id, agent_id: connection.agent_id, runtime,
+    const reporting = await client.reportRuntime(runtime);
+    output({ connection_id: connection.id, agent_id: connection.agent_id, connector_version: CONNECTOR_VERSION, runtime,
+      runtime_version_source: 'agent_card', diagnostic_reporting: reporting,
       readiness: connection.readiness, next: 'Send the free test from the Envar Agent page and inspect its returned result.' });
     return;
   }

@@ -11,6 +11,9 @@ export interface RuntimeReadiness {
   adapter: string;
   runtimeVersion: string;
   capabilities: { recover: boolean; input: boolean; cancel: boolean };
+  /** Separate guarantees; a live Task lookup does not prove restart recovery. */
+  recovery?: { taskLookupAfterRestart: boolean; executionKeyLookup: boolean; resultPersistence: boolean };
+  maxConcurrency?: number;
 }
 export interface RuntimeObservation {
   reference: RuntimeReference;

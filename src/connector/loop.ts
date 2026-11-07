@@ -146,7 +146,9 @@ export class ConnectorLoop {
         const status = await this.client.status();
         if (status.id !== this.journal.binding.connectionId || status.agent_id !== this.journal.binding.agentId ||
             this.runtime.key !== this.journal.binding.adapter) throw new Error('Restore the original Agent/runtime binding');
-        await this.runtime.probe(); this.verified = true;
+        const readiness = await this.runtime.probe();
+        await this.client.reportRuntime(readiness);
+        this.verified = true;
       }
       let after = 0;
       for (;;) {

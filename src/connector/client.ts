@@ -4,6 +4,8 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormatsImport from 'ajv-formats';
 import type { Claim, ConfirmOrderResult, ExecutionRef, Inbox, Order, Report, ServiceConfirmation, ServiceQuoteRequest, Submit, Work } from './contracts.generated.js';
 import { digest } from '../shared/json.js';
+import type { RuntimeReadiness } from '../adapters/types.js';
+import { runtimeReport } from './runtime-report.js';
 
 const ajv = new Ajv2020({ allErrors: false, strict: true });
 (addFormatsImport as unknown as (value: Ajv2020) => void)(ajv);
@@ -84,6 +86,18 @@ export class EnvarWorkClient {
     if (!value || !uuid.test(value.id) || !uuid.test(value.agent_id) || value.mode !== 'inbox' || value.status !== 'active')
       throw new Error('Reconnect this Agent to an active inbox');
     return value;
+  }
+  async reportRuntime(runtime: RuntimeReadiness): Promise<'accepted' | 'unsupported' | 'unavailable'> {
+    const report = runtimeReport(runtime);
+    try {
+      await this.request('/api/v1/agent-connections/current/runtime', report);
+      return 'accepted';
+    } catch (error) {
+      if (error instanceof WorkApiError && [401, 403].includes(error.status)) throw error;
+      if (error instanceof WorkApiError && [404, 405].includes(error.status)) return 'unsupported';
+      // Optional diagnostics must not block recovery of an already admitted task.
+      return 'unavailable';
+    }
   }
   async peers(): Promise<{ items: { agent_id: string; connection_id: string; display_name: string; platform: string }[] }> {
     const value = await this.request('/api/v1/agent-connections/peers') as { items: { agent_id: string; connection_id: string; display_name: string; platform: string }[] };
