@@ -4,7 +4,7 @@ import { existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { privateDirectory, privateJson, writePrivate, writePrivateJson } from './files.js';
+import { privateDirectory, privateJson, privateText, writePrivate, writePrivateJson } from './files.js';
 import { platformOrigin } from './pairing.js';
 import { digest } from '../shared/json.js';
 import { inspectNative, configureNative } from '../adapters/configure-native.js';
@@ -108,18 +108,28 @@ export async function onboard(options: OnboardingOptions): Promise<{ directory: 
           !Number.isFinite(Date.parse(receipt.expires_at))) throw new Error('Unexpected connection identity or authority.');
       const directory = options.stateRoot ? join(root, 'connectors', receipt.agent_id) : connectorDirectory(receipt.agent_id);
       privateDirectory(directory);
+      let previous: ConnectorConfig | undefined;
       if (existsSync(join(directory, 'connector.json'))) {
-        const existing = privateJson<ConnectorConfig>(join(directory, 'connector.json'));
-        if (existing.connectionId !== receipt.connection_id || existing.bindingDigest !== binding)
+        previous = privateJson<ConnectorConfig>(join(directory, 'connector.json'));
+        const upgrade = previous.version === 2 && previous.origin === options.origin && previous.agentId === receipt.agent_id &&
+          previous.connectionId === receipt.connection_id && previous.framework === receipt.runtime &&
+          !previous.disabled && !previous.scopes.includes('work:receive') && receipt.scopes.includes('work:receive');
+        if (!upgrade && (previous.connectionId !== receipt.connection_id || previous.bindingDigest !== binding))
           throw new Error('Preserve the existing Agent connection and journal.');
+        if (upgrade) {
+          writePrivateJson(join(directory,'client-before-receiving-' + receipt.session_id + '.json'),previous);
+          const oldToken=privateText(join(directory,`credential-${previous.connectionId}.txt`));
+          writePrivate(join(directory,`client-credential-before-${receipt.session_id}.txt`),oldToken);
+        }
       }
       const receiving = receipt.scopes.includes('work:receive');
       const config: ConnectorConfig = { version: 2, origin: options.origin, agentId: receipt.agent_id, connectionId: receipt.connection_id,
         framework: options.runtime, scopes: receipt.scopes, expiresAt: receipt.expires_at, allowLocalHttp: options.allowLocalHttp,
-        nativeConfigured: !receiving || !native, onboardingSession: receipt.session_id, bindingDigest: binding,
+        nativeConfigured: !receiving || !native,
+        ...(previous ? { journalCardUrl: previous.journalCardUrl ?? previous.runtime.cardUrl } : {}), onboardingSession: receipt.session_id, bindingDigest: binding,
         ...(execution && receiving ? { execution } : {}), runtime: {
           home: native?.home ?? execution?.workspace ?? directory, agentId: native?.agentId ?? receipt.agent_id,
-          cardUrl: native?.cardUrl ?? 'envar-local:' + binding, binary: native?.binary ?? (execution ? [execution.binary] : []),
+          cardUrl: native?.cardUrl ?? previous?.runtime.cardUrl ?? 'envar-local:' + binding, binary: native?.binary ?? (execution ? [execution.binary] : []),
           ...(native?.configFile ? { configFile: native.configFile } : {}), ...(native?.port ? { port: native.port } : {}),
           peerName: 'envar-' + receipt.agent_id, mcpName: 'envar-' + receipt.agent_id,
         } };
