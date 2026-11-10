@@ -33,3 +33,9 @@ cancellation, durable lookup after native runtime restart, media artifacts and
 streaming remain unverified and disabled. A package version or Card claim alone
 cannot enable these capabilities. Upgrade through the existing connection
 instructions, preserving credentials, native binding, SQLite journal and lock.
+
+Connect 2026.1110.2 reads authenticated connection status first and negotiates
+relay only when the server explicitly advertises `a2a_relay_v1: true`. An older
+server or a paused relay therefore continues Work v1 without a request to an
+unknown route. Actual 401/403 authorization failures remain fatal; they are
+never treated as evidence of protocol compatibility.
