@@ -17,7 +17,7 @@ export async function runConnectorCli(args: string[], commandPrefix: readonly st
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
     agent: { type: 'string' }, framework: { type: 'string' }, home: { type: 'string' }, directory: { type: 'string' },
     origin: { type: 'string' }, 'native-agent': { type: 'string' }, 'runtime-url': { type: 'string' }, connection: { type: 'string' },
-    'allow-local-http': { type: 'boolean' }, 'new-pairing': { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
+    'allow-local-http': { type: 'boolean' }, 'new-pairing': { type: 'boolean' }, json: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
   } });
   const command = positionals[0];
   if (values.help || !command) { console.log(usage); return; }

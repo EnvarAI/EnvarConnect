@@ -25,10 +25,20 @@ connection and any spending grant separately.
 
 For the independent seller-side developer path, start with [EnvarPay](https://github.com/EnvarAI/EnvarPay). Connect itself is the client and native adapter; a compatible enrollment/WorkService server is still required for a live connection.
 
+## One-prompt onboarding
+
+Ask your Agent to read [the official onboarding guide](https://envar.ai/onboard.md).
+Or run `envar-connect onboard --runtime auto --json`: approve the browser link to
+create or bind your Agent. No pre-created Agent UUID, public IP or hand-copied
+token is needed. Client-only use and optional receiving are separate permissions.
+Hermes, OpenClaw, Codex and Claude Code have receiving adapters; other tool-enabled
+Agents can use the generic client. See [unified onboarding](docs/unified-onboarding.md)
+for current text execution, native authentication, supervision and cloud boundaries.
+
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1110.2
+npm install --global --ignore-scripts @envarai/connect@2026.1111.1
 envar-connect --version
 ```
 

@@ -24,7 +24,10 @@ export class A2ARuntimeAdapter implements RuntimeAdapter {
         const dispatch = await this.client.prepareStandard(params);
         return async () => convert(await dispatch());
       },
-      read: async reference => Task.toJSON((await this.client.read({ origin: reference.origin, interfaceUrl: reference.interface, taskId: reference.task_id, contextId: reference.context_id })).task) as Record<string, unknown>,
+      read: async reference => {
+        if (!('origin' in reference)) throw new Error('Use the original native A2A reference.');
+        return Task.toJSON((await this.client.read({ origin: reference.origin, interfaceUrl: reference.interface, taskId: reference.task_id, contextId: reference.context_id })).task) as Record<string, unknown>;
+      },
     };
   }
   async probe(): Promise<RuntimeReadiness> {

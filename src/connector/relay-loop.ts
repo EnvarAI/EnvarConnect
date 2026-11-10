@@ -153,6 +153,8 @@ export class RelayLoop {
     this.journal.saveRelay(record);
   }
   private async advance(record: RelayRecord): Promise<void> {
+    if (record.command.relay_version !== (this.runtime.version ?? '1')) throw new Error('Preserve the original negotiated relay version.');
+    const execution = { workId: record.command.work_id, contextId: record.command.binding_id };
     let preparedDispatch: (() => ReturnType<RelayRuntime['send']>) | undefined;
     if (record.command.kind !== 'send') throw new Error('This Connector cannot execute unverified native controls');
     if (record.pending.length) { await this.flush(record); await this.acknowledge(record); return; }
@@ -165,7 +167,7 @@ export class RelayLoop {
     if (record.phase === 'intent_persisted') {
       // Check the native Card before the first financial admission. This GET
       // is safely repeatable and has not started an Agent task.
-      preparedDispatch = this.runtime.prepareSend ? await this.runtime.prepareSend(record.command.a2a.params) : undefined;
+      preparedDispatch = this.runtime.prepareSend ? await this.runtime.prepareSend(record.command.a2a.params, execution) : undefined;
       try {
         record.command = await this.client.relayOperation(record.command.command_id, 'admit', { claim: record.command.claim, execution_key: record.executionKey });
       } catch (error) {
@@ -197,8 +199,8 @@ export class RelayLoop {
       if (record.command.native_reference || record.command.state !== 'admitted') {
         this.adoptOriginal(record); await this.acknowledge(record); return;
       }
-      const dispatch = preparedDispatch ?? (this.runtime.prepareSend ? await this.heartbeat(record, () => this.runtime.prepareSend!(record.command.a2a.params))
-        : () => this.runtime.send(record.command.a2a.params));
+      const dispatch = preparedDispatch ?? (this.runtime.prepareSend ? await this.heartbeat(record, () => this.runtime.prepareSend!(record.command.a2a.params, execution))
+        : () => this.runtime.send(record.command.a2a.params, execution));
       await this.lease(record);
       record.phase = 'dispatch_started'; const observation = record.nextObservation++;
       this.journal.saveRelay(record); // FULL synchronous SQLite commit precedes POST.
@@ -236,7 +238,7 @@ export class RelayLoop {
   async tick(allowNew: boolean): Promise<void> {
     let handshakeError: unknown;
     if (Date.now() - this.lastHello > 20000) {
-      try { this.enabled = await this.client.relayHello(await this.runtime.cardDigest()); }
+      try { this.enabled = await this.client.relayHello(await this.runtime.cardDigest(), this.runtime.version ?? '1'); }
       catch (error) {
         if (error instanceof WorkApiError && [401, 403].includes(error.status)) throw error;
         this.enabled = false; handshakeError = error;

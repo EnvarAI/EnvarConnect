@@ -14,7 +14,7 @@ export function runtimeReport(runtime: RuntimeReadiness) {
     connector_version: CONNECTOR_VERSION,
     adapter: runtime.adapter,
     runtime_version: version(runtime.runtimeVersion),
-    version_source: 'agent_card',
+    version_source: runtime.versionSource ?? 'agent_card',
     capabilities: {
       task_lookup: runtime.capabilities.recover,
       task_lookup_after_restart: runtime.recovery?.taskLookupAfterRestart ?? false,
@@ -23,6 +23,7 @@ export function runtimeReport(runtime: RuntimeReadiness) {
       input: runtime.capabilities.input,
       cancel: runtime.capabilities.cancel,
       max_concurrency: concurrency,
+      ...(runtime.receiverSupervised === undefined ? {} : { receiver_supervised: runtime.receiverSupervised }),
     },
   };
 }
