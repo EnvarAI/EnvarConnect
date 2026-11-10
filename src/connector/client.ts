@@ -40,7 +40,7 @@ export interface ConnectionStatus {
   platform: string;
   revision: number;
   readiness: Record<string, unknown>;
-  protocol_support?: { a2a_relay_v1?: boolean };
+  protocol_support?: { a2a_relay_v1?: boolean; a2a_relay_v2?: boolean };
 }
 export class EnvarWorkClient {
   readonly origin: string;
@@ -83,18 +83,23 @@ export class EnvarWorkClient {
   async disconnect(): Promise<{ credential_revoked: boolean; connection_revoked: boolean }> {
     return await this.request('/api/v1/agent-connections/current/credential', {}, undefined, 'DELETE') as { credential_revoked: boolean; connection_revoked: boolean };
   }
-  async relayHello(cardDigest: string): Promise<boolean> {
+  async checkOnboarding(sessionId: string, start = false): Promise<Record<string, unknown>> {
+    return await this.request(start ? '/api/v1/onboarding/checks' : `/api/v1/onboarding/checks/${id(sessionId)}`,
+      start ? {} : undefined) as Record<string, unknown>;
+  }
+  async relayHello(cardDigest: string, version: '1'|'2' = '1'): Promise<boolean> {
     // Older product routers can return 403 for an unknown protocol route.
     // Negotiate through the existing authenticated connection endpoint first;
     // never reinterpret a real handshake authorization failure as support.
-    if ((await this.status()).protocol_support?.a2a_relay_v1 !== true) return false;
+    const support = (await this.status()).protocol_support;
+    if ((version === '2' ? support?.a2a_relay_v2 : support?.a2a_relay_v1) !== true) return false;
     try {
       const value = await this.request('/api/v1/connector/a2a-relay/hello', {
-        relay_version: '1', a2a_wire_version: '1.0', runtime_card_digest: cardDigest,
+        relay_version: version, a2a_wire_version: '1.0', runtime_card_digest: cardDigest,
         capabilities: { get: true, input: false, cancel: false, artifacts: false, streaming: false,
           task_lookup_after_restart: false, execution_key_lookup: false }, max_concurrency: 1,
       }) as { relay_version?: string };
-      if (value.relay_version !== '1') throw new Error('Unsupported relay handshake');
+      if (value.relay_version !== version) throw new Error('Unsupported relay handshake');
       return true;
     } catch (error) {
       if (error instanceof WorkApiError && [404, 405, 409].includes(error.status)) return false;

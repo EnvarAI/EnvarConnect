@@ -3,9 +3,10 @@ import type { Work } from '../connector/contracts.generated.js';
 import type { RelayReference } from '../connector/relay-types.js';
 
 export interface RelayRuntime {
+  version?: '1' | '2';
   cardDigest(): Promise<string>;
-  prepareSend?(params: Record<string, unknown>): Promise<() => ReturnType<RelayRuntime['send']>>;
-  send(params: Record<string, unknown>): Promise<{ task?: Record<string, unknown>; message?: Record<string, unknown>; reference?: RelayReference }>;
+  prepareSend?(params: Record<string, unknown>, execution?: { workId: string; contextId: string }): Promise<() => ReturnType<RelayRuntime['send']>>;
+  send(params: Record<string, unknown>, execution?: { workId: string; contextId: string }): Promise<{ task?: Record<string, unknown>; message?: Record<string, unknown>; reference?: RelayReference }>;
   read(reference: RelayReference): Promise<Record<string, unknown>>;
 }
 
@@ -22,6 +23,8 @@ export interface RuntimeReadiness {
   /** Separate guarantees; a live Task lookup does not prove restart recovery. */
   recovery?: { taskLookupAfterRestart: boolean; executionKeyLookup: boolean; resultPersistence: boolean };
   maxConcurrency?: number;
+  versionSource?: 'agent_card' | 'cli_version';
+  receiverSupervised?: boolean;
 }
 export interface RuntimeObservation {
   reference: RuntimeReference;
