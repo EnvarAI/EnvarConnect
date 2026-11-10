@@ -40,6 +40,7 @@ export interface ConnectionStatus {
   platform: string;
   revision: number;
   readiness: Record<string, unknown>;
+  protocol_support?: { a2a_relay_v1?: boolean };
 }
 export class EnvarWorkClient {
   readonly origin: string;
@@ -83,6 +84,10 @@ export class EnvarWorkClient {
     return await this.request('/api/v1/agent-connections/current/credential', {}, undefined, 'DELETE') as { credential_revoked: boolean; connection_revoked: boolean };
   }
   async relayHello(cardDigest: string): Promise<boolean> {
+    // Older product routers can return 403 for an unknown protocol route.
+    // Negotiate through the existing authenticated connection endpoint first;
+    // never reinterpret a real handshake authorization failure as support.
+    if ((await this.status()).protocol_support?.a2a_relay_v1 !== true) return false;
     try {
       const value = await this.request('/api/v1/connector/a2a-relay/hello', {
         relay_version: '1', a2a_wire_version: '1.0', runtime_card_digest: cardDigest,
