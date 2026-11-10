@@ -6,6 +6,7 @@ import type { Claim, ConfirmOrderResult, ExecutionRef, Inbox, Order, Report, Ser
 import { digest } from '../shared/json.js';
 import type { RuntimeReadiness } from '../adapters/types.js';
 import { runtimeReport } from './runtime-report.js';
+import { relayCommand, type RelayCommand, type RelayEvent } from './relay-types.js';
 
 const ajv = new Ajv2020({ allErrors: false, strict: true });
 (addFormatsImport as unknown as (value: Ajv2020) => void)(ajv);
@@ -52,12 +53,12 @@ export class EnvarWorkClient {
     if (!/^envar_agent_[A-Za-z0-9_-]{32,128}$/.test(token)) throw new Error('Use a scoped Envar connection credential');
     this.origin = url.origin; this.token = token; this.fetchImpl = options.fetch ?? fetch;
   }
-  private async request(path: string, body?: unknown, key?: string, method?: 'DELETE'): Promise<unknown> {
+  private async request(path: string, body?: unknown, key?: string, method?: 'DELETE', maximum = 262144): Promise<unknown> {
     if (!path.startsWith('/api/v1/')) throw new Error('Invalid application route');
     const headers = new Headers({ Authorization: `Bearer ${this.token}`, Accept: 'application/json' });
     if (key) headers.set('Idempotency-Key', id(key));
     const encoded = body === undefined ? undefined : JSON.stringify(body);
-    if (encoded && Buffer.byteLength(encoded) > 262144) throw new Error('Work request exceeds the size limit');
+    if (encoded && Buffer.byteLength(encoded) > maximum) throw new Error('Work request exceeds the size limit');
     if (encoded) headers.set('Content-Type', 'application/json');
     const response = await this.fetchImpl(new URL(path, this.origin), {
       method: method ?? (body === undefined ? 'GET' : 'POST'), body: encoded, headers, redirect: 'error', signal: AbortSignal.timeout(20000),
@@ -80,6 +81,44 @@ export class EnvarWorkClient {
   }
   async disconnect(): Promise<{ credential_revoked: boolean; connection_revoked: boolean }> {
     return await this.request('/api/v1/agent-connections/current/credential', {}, undefined, 'DELETE') as { credential_revoked: boolean; connection_revoked: boolean };
+  }
+  async relayHello(cardDigest: string): Promise<boolean> {
+    try {
+      const value = await this.request('/api/v1/connector/a2a-relay/hello', {
+        relay_version: '1', a2a_wire_version: '1.0', runtime_card_digest: cardDigest,
+        capabilities: { get: true, input: false, cancel: false, artifacts: false, streaming: false,
+          task_lookup_after_restart: false, execution_key_lookup: false }, max_concurrency: 1,
+      }) as { relay_version?: string };
+      if (value.relay_version !== '1') throw new Error('Unsupported relay handshake');
+      return true;
+    } catch (error) {
+      if (error instanceof WorkApiError && [404, 405, 409].includes(error.status)) return false;
+      throw error;
+    }
+  }
+  async relayCommands(): Promise<RelayCommand[]> {
+    const result = await this.request('/api/v1/connector/a2a-relay/commands?limit=1') as { items: unknown[] };
+    if (!Array.isArray(result?.items) || result.items.length > 1) throw new Error('Invalid relay command page');
+    return result.items.map(relayCommand);
+  }
+  async relayCommand(commandId: string): Promise<RelayCommand> {
+    const result = relayCommand(await this.request(`/api/v1/connector/a2a-relay/commands/${id(commandId)}`));
+    if (result.command_id !== commandId) throw new Error('Envar returned another original relay command');
+    return result;
+  }
+  async relayOperation(commandId: string, operation: 'claim' | 'admit' | 'lease' | 'recover', body: unknown): Promise<RelayCommand> {
+    const result = relayCommand(await this.request(`/api/v1/connector/a2a-relay/commands/${id(commandId)}/${operation}`, body));
+    if (result.command_id !== commandId) throw new Error('Envar returned another original relay command');
+    return result;
+  }
+  async relayEvent(commandId: string, event: RelayEvent): Promise<{ result_digest: string; state: string }> {
+    const result = await this.request(`/api/v1/connector/a2a-relay/commands/${id(commandId)}/events`, event, undefined, undefined, 5243904) as { event_id: string; last_committed_sequence: number; result_digest: string; state: string };
+    if (result.event_id !== event.event_id || result.last_committed_sequence < event.sequence) throw new Error('Relay did not persist the original event');
+    return result;
+  }
+  async relayAck(commandId: string, body: unknown): Promise<void> {
+    const result = await this.request(`/api/v1/connector/a2a-relay/commands/${id(commandId)}/ack`, body) as { command_id: string; acknowledged: boolean };
+    if (result.command_id !== commandId || result.acknowledged !== true) throw new Error('Relay did not acknowledge the original result');
   }
   async status(): Promise<ConnectionStatus> {
     const value = await this.request('/api/v1/agent-connections/current') as ConnectionStatus;

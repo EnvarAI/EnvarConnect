@@ -1,6 +1,6 @@
 /** Shared official A2A transport for local runtime adapters and the legacy seller gate. */
 import { randomUUID } from 'node:crypto';
-import { AgentCard, GetTaskRequest, SendMessageRequest, Task } from '@a2a-js/sdk';
+import { AgentCard, GetTaskRequest, Message, SendMessageRequest, Task } from '@a2a-js/sdk';
 import { TaskNotFoundError, RequestMalformedError } from '@a2a-js/sdk/errors';
 import { ClientFactory, JsonRpcTransportFactory } from '@a2a-js/sdk/client';
 import { validateUrl } from '../shared/json.js';
@@ -84,6 +84,26 @@ export class NativeA2AClient {
   }
   async read(remote: RecoverableReference) {
     const prepared = await this.prepare(remote);
-    return this.observed(await prepared.client.getTask(GetTaskRequest.fromJSON({ id: remote.taskId })), prepared.interfaceUrl, remote.taskId);
+    const result = this.observed(await prepared.client.getTask(GetTaskRequest.fromJSON({ id: remote.taskId })), prepared.interfaceUrl, remote.taskId);
+    if (remote.contextId && result.reference.contextId !== remote.contextId) throw new CommerceError('remote_context_conflict', 'Native runtime returned another original context');
+    return result;
+  }
+  async sendStandard(params: Record<string, unknown>) {
+    return (await this.prepareStandard(params))();
+  }
+  async prepareStandard(params: Record<string, unknown>) {
+    const prepared = await this.prepare();
+    const request = SendMessageRequest.fromJSON(params);
+    // Preparation only reads and validates the Card. The caller commits its
+    // dispatch marker immediately before invoking this one-POST closure.
+    return async () => {
+      const response = await prepared.client.sendMessage(request);
+      if (response && 'status' in response) {
+        const result = this.observed(response, prepared.interfaceUrl);
+        return { task: Task.toJSON(result.task) as Record<string, unknown>, reference: result.reference };
+      }
+      if (!response || !('role' in response)) throw new CommerceError('upstream_result', 'Native runtime returned no standard result');
+      return { message: Message.toJSON(response) as Record<string, unknown> };
+    };
   }
 }

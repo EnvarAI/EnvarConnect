@@ -21,6 +21,7 @@ function fixture(Adapter) {
         return Response.json({ jsonrpc: '2.0', id: body.id, error: { code: -32001, message: 'Task not found' } });
       calls.push(body);
       if (body.method === 'SendMessage' && state.loseSend) throw new Error('native response lost');
+      if (body.method === 'SendMessage' && state.message) return Response.json({ jsonrpc: '2.0', id: body.id, result: { message: state.message } });
       if (state.missing) return Response.json({ jsonrpc: '2.0', id: body.id, error: { code: -32001, message: 'Task not found' } });
       const task = { id: state.taskId, contextId: 'native-context', status: { state: state.phase,
         message: { role: 'ROLE_AGENT', messageId: 'status', parts: [{ text: 'status-only text' }] } },
@@ -74,4 +75,28 @@ test('changed reference or Card origin cannot redirect the native credential', a
   f.card.supportedInterfaces[0].url = 'https://other.example/a2a';
   await assert.rejects(f.adapter.observe(started.reference), RuntimeOutcomeUnknown);
   assert.equal(f.calls.length, 1);
+});
+
+test('relay retains standard AUTH_REQUIRED, complete parts and the original native reference', async () => {
+  const f = fixture(HermesRuntimeAdapter);
+  f.state.phase = 'TASK_STATE_AUTH_REQUIRED';
+  assert.match(await f.adapter.relay.cardDigest(), /^[a-f0-9]{64}$/);
+  const params = { message: { messageId: 'original:non-uuid', contextId: 'public-context', role: 'ROLE_USER', parts: [{ text: 'Original first part' }, { text: 'Second part' }] }, configuration: { returnImmediately: true } };
+  const sent = await f.adapter.relay.send(params);
+  assert.equal(sent.task.status.state, 'TASK_STATE_AUTH_REQUIRED');
+  assert.deepEqual(f.calls[0].params.message.parts, params.message.parts);
+  f.state.phase = 'TASK_STATE_COMPLETED';
+  const result = await f.adapter.relay.read(sent.reference);
+  assert.equal(result.artifacts[0].artifactId, 'original');
+  assert.deepEqual(f.calls.map(call => call.method), ['SendMessage', 'GetTask']);
+  assert.equal(f.calls[1].params.id, 'native-original');
+});
+
+test('relay accepts an immediate standard Message without fabricating a native Task ID', async () => {
+  const f = fixture(OpenClawRuntimeAdapter);
+  f.state.message = { messageId: 'reply:one', role: 'ROLE_AGENT', parts: [{ text: 'Immediate result' }] };
+  const result = await f.adapter.relay.send({ message: { messageId: 'message:one', role: 'ROLE_USER', parts: [{ text: 'Original brief' }] } });
+  assert.equal(result.reference, undefined); assert.equal(result.task, undefined);
+  assert.deepEqual(result.message.parts, f.state.message.parts);
+  assert.equal(f.calls.filter(call => call.method === 'SendMessage').length, 1);
 });
