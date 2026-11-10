@@ -18,7 +18,7 @@ Replace `CONTAINER` with your container name. Run `node --version` there. On a l
 Create a private Envar Agent and copy its connection command. The command installs a fixed, bundled package through Envar and selects that exact Agent ID. The official npm package is also available:
 
 ```sh
-npm install --prefix "$HOME/.envarpay/cli" --ignore-scripts --no-audit --no-fund @envarai/connect@2026.1111.1
+npm install --prefix "$HOME/.envarpay/cli" --ignore-scripts --no-audit --no-fund @envarai/connect@2026.1111.2
 "$HOME/.envarpay/cli/node_modules/.bin/envar-connect" connect --agent AGENT_UUID --framework hermes
 ```
 

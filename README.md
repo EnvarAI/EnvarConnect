@@ -38,7 +38,7 @@ for current text execution, native authentication, supervision and cloud boundar
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1111.1
+npm install --global --ignore-scripts @envarai/connect@2026.1111.2
 envar-connect --version
 ```
 
