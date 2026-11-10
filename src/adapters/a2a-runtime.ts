@@ -1,4 +1,6 @@
-import { SendMessageRequest, TaskState, Task } from '@a2a-js/sdk';
+import { AgentCard, SendMessageRequest, TaskState, Task } from '@a2a-js/sdk';
+import { digest } from '../shared/json.js';
+import type { RelayRuntime } from './types.js';
 import type { Work } from '../connector/contracts.generated.js';
 import { NativeRequestNotStarted, NativeA2AClient, type NativeA2ASettings, type NativeTaskReference } from './native-a2a.js';
 import { RuntimeOutcomeUnknown, type RuntimeAdapter, type RuntimeObservation, type RuntimeReadiness, type RuntimeReference } from './types.js';
@@ -8,7 +10,23 @@ export class RuntimeControlUnsupported extends Error {
 }
 export class A2ARuntimeAdapter implements RuntimeAdapter {
   private readonly client: NativeA2AClient;
-  constructor(readonly key: string, private readonly settings: NativeA2ASettings) { this.client = new NativeA2AClient(settings); }
+  readonly relay: RelayRuntime;
+  constructor(readonly key: string, private readonly settings: NativeA2ASettings) {
+    this.client = new NativeA2AClient(settings);
+    const convert = (result: Awaited<ReturnType<NativeA2AClient['sendStandard']>>) => ({
+      ...(result.task ? { task: result.task } : {}), ...(result.message ? { message: result.message } : {}),
+      ...(result.reference ? { reference: { origin: result.reference.origin, interface: result.reference.interfaceUrl, task_id: result.reference.taskId, context_id: result.reference.contextId } } : {}),
+    });
+    this.relay = {
+      cardDigest: async () => digest(AgentCard.toJSON(await this.client.probe())),
+      send: async params => convert(await this.client.sendStandard(params)),
+      prepareSend: async params => {
+        const dispatch = await this.client.prepareStandard(params);
+        return async () => convert(await dispatch());
+      },
+      read: async reference => Task.toJSON((await this.client.read({ origin: reference.origin, interfaceUrl: reference.interface, taskId: reference.task_id, contextId: reference.context_id })).task) as Record<string, unknown>,
+    };
+  }
   async probe(): Promise<RuntimeReadiness> {
     const card = await this.client.probe();
     // The currently supported native plugins retain tasks in memory. Their restart loses those handles.

@@ -28,7 +28,7 @@ For the independent seller-side developer path, start with [EnvarPay](https://gi
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1108.1
+npm install --global --ignore-scripts @envarai/connect@2026.1110.1
 envar-connect --version
 ```
 

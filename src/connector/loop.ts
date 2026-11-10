@@ -5,13 +5,17 @@ import { ConnectorJournal, type LocalWork } from './state.js';
 import type { RuntimeAdapter, RuntimeObservation } from '../adapters/types.js';
 import { NativeRequestNotStarted } from '../adapters/native-a2a.js';
 import { RuntimeControlUnsupported } from '../adapters/a2a-runtime.js';
+import { RelayLoop, relayBlocksDispatch } from './relay-loop.js';
 
 const terminal = new Set(['completed', 'failed', 'canceled']);
 const claimValue = (record: LocalWork) => ({ id: record.claim!.id, fence: record.claim!.fence });
 export class ConnectorLoop {
   private running = false;
   private verified = false;
-  constructor(readonly client: EnvarWorkClient, readonly runtime: RuntimeAdapter, readonly journal: ConnectorJournal) {}
+  private readonly relay?: RelayLoop;
+  constructor(readonly client: EnvarWorkClient, readonly runtime: RuntimeAdapter, readonly journal: ConnectorJournal) {
+    if (runtime.relay) this.relay = new RelayLoop(client, runtime.relay, journal);
+  }
   private async lease(record: LocalWork, recover = false): Promise<void> {
     if (!record.claim) return;
     const expires = Date.parse(record.claim.lease_until ?? '');
@@ -161,7 +165,8 @@ export class ConnectorLoop {
       // Resume admitted work and reports before claiming new work. One native execution at a time.
       const active = this.journal.pending().filter(record => record.phase !== 'prepared');
       for (const record of active) await this.advance(record);
-      if (!this.journal.pending().some(record => record.phase !== 'prepared')) {
+      await this.relay?.tick(!this.journal.pending().some(record => record.phase !== 'prepared'));
+      if (!this.journal.pending().some(record => record.phase !== 'prepared') && !this.journal.pendingRelay().some(relayBlocksDispatch)) {
         const next = this.journal.pending().find(record => record.phase === 'prepared');
         if (next) await this.advance(next);
       }

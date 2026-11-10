@@ -1,5 +1,13 @@
 /** Runtime boundary: the Connector owns delivery; the user/vendor owns execution. */
 import type { Work } from '../connector/contracts.generated.js';
+import type { RelayReference } from '../connector/relay-types.js';
+
+export interface RelayRuntime {
+  cardDigest(): Promise<string>;
+  prepareSend?(params: Record<string, unknown>): Promise<() => ReturnType<RelayRuntime['send']>>;
+  send(params: Record<string, unknown>): Promise<{ task?: Record<string, unknown>; message?: Record<string, unknown>; reference?: RelayReference }>;
+  read(reference: RelayReference): Promise<Record<string, unknown>>;
+}
 
 export interface RuntimeReference {
   adapter: string;
@@ -23,6 +31,7 @@ export interface RuntimeObservation {
 }
 export interface RuntimeAdapter {
   readonly key: string;
+  readonly relay?: RelayRuntime;
   probe(): Promise<RuntimeReadiness>;
   /** Called once after durable local preparation and Envar admission. Never retries an unknown POST. */
   start(work: Work, executionKey: string): Promise<RuntimeObservation>;

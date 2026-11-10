@@ -6,6 +6,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import type { Claim, Delivery, Report, Work } from './contracts.generated.js';
 import type { RuntimeObservation, RuntimeReference } from '../adapters/types.js';
+import { relayCommand, type RelayCommand, type RelayRecord } from './relay-types.js';
 
 export type Phase = 'prepared' | 'claimed' | 'admitted' | 'dispatching' | 'running' | 'waiting_input' | 'report_pending' | 'unknown' | 'terminal';
 export interface LocalWork {
@@ -47,6 +48,7 @@ export class ConnectorJournal {
       CREATE TABLE IF NOT EXISTS connector_outgoing (id TEXT PRIMARY KEY,request TEXT NOT NULL,work TEXT);
       CREATE TABLE IF NOT EXISTS connector_control (id INTEGER PRIMARY KEY,value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS connector_order_request (id TEXT PRIMARY KEY,request TEXT NOT NULL,order_id TEXT);
+      CREATE TABLE IF NOT EXISTS connector_relay (id TEXT PRIMARY KEY,phase TEXT NOT NULL,value TEXT NOT NULL,created INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS connector_work_phase ON connector_work(phase,created);`);
     const existing = this.db.prepare("SELECT value FROM connector_meta WHERE key='binding'").get();
     if (existing && existing.value !== JSON.stringify(binding)) { this.db.close(); throw new Error('This journal belongs to another Agent or runtime binding'); }
@@ -193,6 +195,33 @@ export class ConnectorJournal {
     this.save(record);
   }
   sameObservation(record: LocalWork, observation: unknown): boolean { return record.lastObservation === digest(observation); }
+  ingestRelay(value: RelayCommand): RelayRecord {
+    const command = relayCommand(value);
+    if (command.connection_id !== this.binding.connectionId) throw new Error('Relay belongs to another original connection');
+    const prior = this.getRelay(command.command_id);
+    if (prior) {
+      if (prior.command.request_digest !== command.request_digest || prior.command.binding_id !== command.binding_id)
+        throw new Error('The original relay command changed');
+      return prior;
+    }
+    if (command.claim || !['pending', 'canceled'].includes(command.state))
+      throw new Error('Restore the original relay journal before recovering an admitted command');
+    const created: RelayRecord = { command, phase: command.state === 'canceled' ? 'events_acked' : 'received', claimRequestId: randomUUID(),
+      executionKey: command.command_id, nextEvent: 1, nextObservation: 1, pending: [] };
+    this.saveRelay(created); return created;
+  }
+  getRelay(id: string): RelayRecord | undefined {
+    const row = this.db.prepare('SELECT value FROM connector_relay WHERE id=?').get(id);
+    return row ? parseStored<RelayRecord>(String(row.value)) : undefined;
+  }
+  saveRelay(record: RelayRecord): void {
+    this.db.prepare('INSERT INTO connector_relay VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET phase=excluded.phase,value=excluded.value')
+      .run(record.command.command_id, record.phase, JSON.stringify(record), Date.now());
+  }
+  pendingRelay(): RelayRecord[] {
+    return this.db.prepare("SELECT value FROM connector_relay WHERE phase!='events_acked' ORDER BY created").all()
+      .map(row => parseStored<RelayRecord>(String(row.value)));
+  }
   close(): void {
     this.db.close();
     try {
