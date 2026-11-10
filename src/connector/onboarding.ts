@@ -125,7 +125,8 @@ export async function onboard(options: OnboardingOptions): Promise<{ directory: 
       const receiving = receipt.scopes.includes('work:receive');
       const config: ConnectorConfig = { version: 2, origin: options.origin, agentId: receipt.agent_id, connectionId: receipt.connection_id,
         framework: options.runtime, scopes: receipt.scopes, expiresAt: receipt.expires_at, allowLocalHttp: options.allowLocalHttp,
-        nativeConfigured: !receiving || !native, onboardingSession: receipt.session_id, bindingDigest: binding,
+        nativeConfigured: !receiving || !native,
+        ...(previous ? { journalCardUrl: previous.journalCardUrl ?? previous.runtime.cardUrl } : {}), onboardingSession: receipt.session_id, bindingDigest: binding,
         ...(execution && receiving ? { execution } : {}), runtime: {
           home: native?.home ?? execution?.workspace ?? directory, agentId: native?.agentId ?? receipt.agent_id,
           cardUrl: native?.cardUrl ?? previous?.runtime.cardUrl ?? 'envar-local:' + binding, binary: native?.binary ?? (execution ? [execution.binary] : []),

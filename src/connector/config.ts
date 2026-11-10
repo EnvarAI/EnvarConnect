@@ -15,6 +15,7 @@ export interface ConnectorConfig {
   version: 1 | 2; origin: string; agentId: string; connectionId: string; framework: RuntimeKind;
   scopes: string[]; expiresAt: string; allowLocalHttp?: boolean; nativeConfigured: boolean; disabled?: boolean;
   runtime: { home: string; configFile?: string; port?: number; agentId: string; cardUrl: string; binary: string[]; peerName: string; mcpName: string };
+  journalCardUrl?: string;
   onboardingSession?: string; bindingDigest?: string; execution?: CliExecutionConfig;
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -45,7 +46,7 @@ export function connectorClient(directory: string, config = readConnector(direct
 }
 export function connectorJournal(directory: string, config = readConnector(directory)) {
   return new ConnectorJournal(join(directory, `journal-${config.connectionId}.sqlite3`), { origin: config.origin,
-    agentId: config.agentId, connectionId: config.connectionId, adapter: config.framework, cardUrl: config.runtime.cardUrl });
+    agentId: config.agentId, connectionId: config.connectionId, adapter: config.framework, cardUrl: config.journalCardUrl ?? config.runtime.cardUrl });
 }
 export function runtimeAdapter(directory: string, config = readConnector(directory)) {
   if (!config.scopes.includes('work:receive')) throw new Error('This connection uses services only. Receiving requires owner approval.');
