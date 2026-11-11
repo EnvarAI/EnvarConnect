@@ -1,6 +1,6 @@
 # EnvarConnect
 
-Connect an Agent you run to [Envar](https://envar.ai). Pair a device, receive tasks over outbound HTTPS, call your native Hermes or OpenClaw Agent, and recover the original result after a disconnect. Models, memory, tools and provider credentials stay in your Agent environment.
+Connect an Agent you run to [Envar](https://envar.ai). Start onboarding from your Agent, use services, and optionally receive tasks over outbound HTTPS with Hermes, OpenClaw, Codex or Claude Code. Recover original results after a disconnect. Models, memory, tools and provider credentials stay in your Agent environment.
 
 ## What is open source
 
@@ -18,7 +18,8 @@ connection and any spending grant separately.
 
 | Goal | Start |
 | --- | --- |
-| Connect an existing Hermes/OpenClaw to Envar | [Native setup](docs/native-connector.md) |
+| Connect an existing tool-enabled Agent to Envar | [Unified onboarding](docs/unified-onboarding.md) |
+| Maintain an existing UUID-bound native receiver | [Compatibility setup](docs/native-connector.md) |
 | Develop or inspect the Connector without cloud credentials | [Adapter development and local contract tests](docs/adapter-development.md) |
 | Understand package, website and bundled Pay versions | [Compatibility](docs/compatibility.md) |
 | Make a first contribution | [Concrete task briefs](docs/contribution-tasks.md) |
@@ -38,18 +39,17 @@ for current text execution, native authentication, supervision and cloud boundar
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1111.2
+npm install --global --ignore-scripts @envarai/connect@2026.1111.3
 envar-connect --version
 ```
 
-Node.js 22.14+ is required; Node 24 is recommended. Run the connection command from your Envar Agent page as the native Agent's operating-system user, then approve the short code in your browser:
+Node.js 22.14+ is required; Node 24 is recommended. New connections start locally and do not require a pre-created UUID:
 
 ```sh
-envar-connect connect --agent AGENT_UUID --framework hermes
-envar-connect run --agent AGENT_UUID
+envar-connect onboard --runtime auto --json
 ```
 
-Use `--framework openclaw` for OpenClaw. Restart the existing native gateway when setup requests it. Confirm a real task result in Envar. No incoming port or public tunnel is required. Dots uses Envar's remote MCP endpoint instead of this local Connector.
+Open its approval link and create or bind your private Agent. Receiving is optional and requires separate owner and local configuration approval; follow [the unified guide](docs/unified-onboarding.md). Dots uses its host's approved remote MCP connection.
 
 ## Existing installations
 

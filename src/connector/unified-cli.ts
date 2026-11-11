@@ -29,10 +29,11 @@ export async function runUnifiedCli(args: string[]): Promise<void> {
     runtime:{type:'string'}, origin:{type:'string'}, receive:{type:'boolean'}, workspace:{type:'string'}, profile:{type:'string'},
     home:{type:'string'}, 'native-agent':{type:'string'}, 'allow-local-http':{type:'boolean'}, json:{type:'boolean'},
     'approve-local-configuration':{type:'boolean'}, 'install-receiver':{type:'boolean'}, directory:{type:'string'}, agent:{type:'string'},
-    'new-pairing':{type:'boolean'}, file:{type:'string'}, query:{type:'string'}, help:{type:'boolean'},
+    'new-pairing':{type:'boolean'}, file:{type:'string'}, query:{type:'string'}, help:{type:'boolean',short:'h'},
   } });
   const [command,operation,target] = positionals;
-  if (values.help) { print({ commands:['onboard','services list','orders quote|confirm|get|list|recover','receiver install|start|stop|status','check'],
+  if (values.help) { print({ commands:['onboard','connections','services list','orders quote|confirm|get|list|recover','receiver install|start|stop|status','check'],
+    existing_connections:['connect --agent UUID --framework hermes|openclaw','run --agent UUID','doctor --agent UUID','status --agent UUID','disconnect --agent UUID'],
     next:'Start with onboard --runtime auto --json. Add --receive and a reviewed --workspace only to offer services.' }); return; }
   if (command === 'onboard') {
     const runtime = (!values.runtime || values.runtime === 'auto' ? detectRuntime() : values.runtime) as RuntimeKind;
