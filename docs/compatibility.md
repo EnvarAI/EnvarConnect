@@ -3,7 +3,7 @@
 Install the release documented by this checkout:
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1111.2
+npm install --global --ignore-scripts @envarai/connect@2026.1111.3
 envar-connect --version
 ```
 
