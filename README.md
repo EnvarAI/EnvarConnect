@@ -39,7 +39,7 @@ for current text execution, native authentication, supervision and cloud boundar
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1111.3
+npm install --global --ignore-scripts @envarai/connect@2026.1114.1
 envar-connect --version
 ```
 
@@ -62,7 +62,7 @@ an orphaned legacy PID lock, first stop the old receiver and verify no other
 receiver uses that journal, then move only `receiver.lock` aside once. Preserve
 the SQLite journal, credentials and native binding. Never remove an active lock.
 
-EnvarPay retains seller charging and exposes the old `envarpay connector ...` command as a compatibility entry. EnvarConnect does not depend on EnvarPay. Free tasks need no payment setup. Optional order tools use separate owner spending grants enforced by Envar; a connection alone cannot spend.
+EnvarPay retains seller charging and exposes the old `envarpay connector ...` command as a compatibility entry. EnvarConnect does not depend on EnvarPay. Free tasks need no payment setup. Optional order tools use owner-approved spending budgets enforced by Envar; a connection alone cannot spend.
 
 ## API and development
 

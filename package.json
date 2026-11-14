@@ -1,6 +1,6 @@
 {
   "name": "@envarai/connect",
-  "version": "2026.1111.3",
+  "version": "2026.1114.1",
   "description": "Connect your own Agent to Envar: tasks, native adapters and recovery",
   "type": "module",
   "license": "MIT",
