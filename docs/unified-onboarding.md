@@ -17,8 +17,7 @@ Client-only connections need no native gateway or background receiver. Use
 `services list`, `orders quote --file REQUEST.json`, `orders confirm ORDER_ID
 --file CONFIRMATION.json`, and `orders get ORDER_ID`. Request files use the
 existing Agent Work v1 service quote and confirmation schemas; keep their original
-message IDs. Quotes do not charge. Paid orders still require owner approval or
-an exact spending grant.
+message IDs. Quotes do not charge. Paid orders require owner approval or a valid spending budget. Compatible Envar servers select the current Agent budget automatically; the owner can authorize all eligible services or selected services, a per-order limit, a shared cumulative limit and expiry. Legacy grants still bind exact service revisions. Pause, revoke or edit the budget from the Agent page. Connection-only approval never grants spending.
 
 ## Providing services
 
