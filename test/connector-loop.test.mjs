@@ -8,6 +8,7 @@ import { ConnectorJournal } from '../dist/connector/state.js';
 import { ConnectorLoop } from '../dist/connector/loop.js';
 import { WorkApiError } from '../dist/connector/client.js';
 import { RuntimeControlUnsupported } from '../dist/adapters/a2a-runtime.js';
+import { NativeRequestNotStarted } from '../dist/adapters/native-a2a.js';
 
 function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), 'envar-connector-test-'));
@@ -104,6 +105,35 @@ test('lost admission response is retried with the same claim before one native d
   assert.equal(f.calls.start, 1); assert.equal(f.calls.nativeStart, 1);
   assert.equal(f.journal.get(f.work.id).claimRequestId, key);
 });
+for (const responseLost of [false, true]) {
+  for (const knownNotStarted of [false, true]) {
+    test(`restored admission reports a ${knownNotStarted ? 'rejected' : 'uncertain'} native start after ${responseLost ? 'a lost admission response' : 'an admitted checkpoint'}`, async t => {
+      const f = fixture(t);
+      // Stop after platform admission, before the receiver dispatches native work.
+      f.faults.startResponseLost = true;
+      await assert.rejects(f.loop.tick(), /response lost after durable admission/);
+      const record = f.journal.get(f.work.id);
+      if (!responseLost) { record.phase = 'admitted'; f.journal.save(record); }
+      const claim = structuredClone(record.claim), key = record.claimRequestId;
+      let attempts = 0;
+      f.runtime.start = async () => {
+        attempts++;
+        assert.equal(f.journal.get(f.work.id).phase, 'dispatching');
+        if (knownNotStarted) throw new NativeRequestNotStarted();
+        throw new Error('Original native dispatch outcome unavailable');
+      };
+      f.reopen(); await f.loop.tick();
+      assert.equal(f.journal.get(f.work.id).phase, knownNotStarted ? 'terminal' : 'unknown');
+      assert.equal(f.calls.report.length, 1);
+      assert.equal(f.calls.report[0].kind, knownNotStarted ? 'failed' : 'outcome_unknown');
+      assert.deepEqual(f.calls.report[0].claim, { id: claim.id, fence: claim.fence });
+      assert.equal(f.journal.get(f.work.id).claimRequestId, key);
+      assert.equal(f.calls.start, 1); assert.equal(attempts, 1);
+      f.reopen(); await f.loop.tick();
+      assert.equal(f.calls.report.length, 1); assert.equal(attempts, 1);
+    });
+  }
+}
 test('lost native POST stays unknown across restarts with no repeated model task', async t => {
   const f = fixture(t); f.faults.nativeResponseLost = true;
   await f.loop.tick(); assert.equal(f.journal.get(f.work.id).phase, 'unknown');

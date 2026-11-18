@@ -3,7 +3,7 @@
 Install the release documented by this checkout:
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1114.1
+npm install --global --ignore-scripts @envarai/connect@2026.1119.1
 envar-connect --version
 ```
 
@@ -25,6 +25,13 @@ Keep only one receiver for a journal. The website and Pay dependency should be
 promoted only after that consumer's contract and installation checks pass.
 A newer package release alone does not establish that an existing receiver was
 upgraded or that every supported runtime was retested.
+
+Current and compatibility CLI entrypoints use one command registry. Existing
+`connect`, `run`, `doctor`, `status`, `disconnect`, `mcp` and `envarpay connector`
+calls retain their installed command prefix. Configuration versions 1 and 2 are
+normalized in memory; no upgrade rewrites the original journal binding or moves
+credentials. Work v1 and negotiated relay retain their own receipts and recovery
+records while sharing the local heartbeat and durable dispatch barrier.
 
 ## Runtime scope
 

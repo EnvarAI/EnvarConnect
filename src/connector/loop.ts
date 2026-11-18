@@ -6,6 +6,7 @@ import type { RuntimeAdapter, RuntimeObservation } from '../adapters/types.js';
 import { NativeRequestNotStarted } from '../adapters/native-a2a.js';
 import { RuntimeControlUnsupported } from '../adapters/a2a-runtime.js';
 import { RelayLoop, relayBlocksDispatch } from './relay-loop.js';
+import { ExecutionLifecycle } from './execution-lifecycle.js';
 
 const terminal = new Set(['completed', 'failed', 'canceled']);
 const claimValue = (record: LocalWork) => ({ id: record.claim!.id, fence: record.claim!.fence });
@@ -26,16 +27,11 @@ export class ConnectorLoop {
     if (row.status === 'unknown') record.lastObservation = undefined;
     this.journal.save(record);
   }
-  private async withHeartbeat<T>(record: LocalWork, action: () => Promise<T>): Promise<T> {
-    let heartbeat: Promise<void> | undefined;
-    const timer = setInterval(() => {
-      if (!heartbeat) heartbeat = this.lease(record).catch(() => {
-        // Keep the actual native outcome. Reporting revalidates authority; never dispatch again.
-        record.error = 'lease_unavailable'; this.journal.save(record);
-      }).finally(() => { heartbeat = undefined; });
-    }, 30000);
-    try { return await action(); }
-    finally { clearInterval(timer); await heartbeat; }
+  private execution(record: LocalWork): ExecutionLifecycle {
+    return new ExecutionLifecycle(() => this.lease(record), 30000, () => {
+      // Keep the actual native outcome. Reporting revalidates authority; never dispatch again.
+      record.error = 'lease_unavailable'; this.journal.save(record);
+    });
   }
   private async flush(record: LocalWork): Promise<void> {
     if (!record.pendingReport) return;
@@ -110,8 +106,12 @@ export class ConnectorLoop {
       record.claim = admitted.claim; record.phase = 'admitted'; this.journal.save(record);
     }
     if (record.phase === 'admitted') {
-      record.phase = 'dispatching'; this.journal.save(record);
-      try { await this.observed(record, await this.withHeartbeat(record, () => this.runtime.start(record.work, record.work.id))); }
+      try {
+        const dispatch = this.execution(record).prepareDispatch(() => {
+          record.phase = 'dispatching'; this.journal.save(record);
+        }, () => this.runtime.start(record.work, record.work.id));
+        await this.observed(record, await dispatch());
+      }
       catch (error) {
         if (record.pendingReport) throw error;
         // Keep any returned native handle even when its first report could not reach Envar.
@@ -132,7 +132,7 @@ export class ConnectorLoop {
     }
     if (record.reference && ['running', 'waiting_input', 'unknown'].includes(record.phase)) {
       await this.lease(record);
-      try { await this.observed(record, await this.withHeartbeat(record, () => this.runtime.observe(record.reference!))); }
+      try { await this.observed(record, await this.execution(record).observe(() => this.runtime.observe(record.reference!))); }
       catch (error) {
         if (record.pendingReport) throw error;
         if (record.phase !== 'unknown') {
