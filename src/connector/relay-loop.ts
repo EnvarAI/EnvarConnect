@@ -4,6 +4,7 @@ import { digest } from '../shared/json.js';
 import { EnvarWorkClient, WorkApiError } from './client.js';
 import type { ConnectorJournal } from './state.js';
 import type { RelayEvent, RelayRecord } from './relay-types.js';
+import { ExecutionLifecycle } from './execution-lifecycle.js';
 
 const terminal = new Set(['TASK_STATE_COMPLETED', 'TASK_STATE_FAILED', 'TASK_STATE_CANCELED', 'TASK_STATE_REJECTED']);
 const taskState = (task: Record<string, unknown>) => String((task.status as { state?: string })?.state);
@@ -40,14 +41,9 @@ export class RelayLoop {
     record.nextObservation = Math.max(record.nextObservation, (command.last_observation_sequence ?? 0) + 1);
     this.journal.saveRelay(record);
   }
-  private async heartbeat<T>(record: RelayRecord, operation: () => Promise<T>): Promise<T> {
-    let active: Promise<void> | undefined;
-    const timer = setInterval(() => {
-      if (!active) active = this.lease(record).catch(() => {
-        // The native result is still preserved; flush revalidates the original authority.
-      }).finally(() => { active = undefined; });
-    }, 40000);
-    try { return await operation(); } finally { clearInterval(timer); await active; }
+  private execution(record: RelayRecord): ExecutionLifecycle {
+    // The native result is preserved even if a heartbeat fails; flush checks authority.
+    return new ExecutionLifecycle(() => this.lease(record), 40000);
   }
   private async flush(record: RelayRecord): Promise<void> {
     if (!record.pending.length) return;
@@ -84,7 +80,7 @@ export class RelayLoop {
       await this.lease(record);
       const observation = record.nextObservation++; this.journal.saveRelay(record);
       let original: Record<string, unknown> | undefined;
-      try { original = await this.heartbeat(record, () => this.runtime.read(record.reference!)); }
+      try { original = await this.execution(record).observe(() => this.runtime.read(record.reference!)); }
       catch { /* Retry this original verification read; do not repeat its send. */ }
       if (original) {
         // The obligation and its evidence share one durable journal write.
@@ -199,13 +195,16 @@ export class RelayLoop {
       if (record.command.native_reference || record.command.state !== 'admitted') {
         this.adoptOriginal(record); await this.acknowledge(record); return;
       }
-      const dispatch = preparedDispatch ?? (this.runtime.prepareSend ? await this.heartbeat(record, () => this.runtime.prepareSend!(record.command.a2a.params, execution))
+      const operation = preparedDispatch ?? (this.runtime.prepareSend ? await this.execution(record).observe(() => this.runtime.prepareSend!(record.command.a2a.params, execution))
         : () => this.runtime.send(record.command.a2a.params, execution));
       await this.lease(record);
-      record.phase = 'dispatch_started'; const observation = record.nextObservation++;
-      this.journal.saveRelay(record); // FULL synchronous SQLite commit precedes POST.
+      let observation = 0;
+      const dispatch = this.execution(record).prepareDispatch(() => {
+        record.phase = 'dispatch_started'; observation = record.nextObservation++;
+        this.journal.saveRelay(record); // FULL synchronous SQLite commit precedes POST.
+      }, operation);
       let result: Awaited<ReturnType<RelayRuntime['send']>>;
-      try { result = await this.heartbeat(record, dispatch); }
+      try { result = await dispatch(); }
       catch { await this.unknown(record, 'dispatch_uncertain'); return; }
       // Even an immediately terminal Task gets one original GetTask readback.
       // This also supplies the explicit native lookup evidence for enrollment.
@@ -229,7 +228,7 @@ export class RelayLoop {
       await this.lease(record);
       const observation = record.nextObservation++; this.journal.saveRelay(record);
       let task: Record<string, unknown>;
-      try { task = await this.heartbeat(record, () => this.runtime.read(record.reference!)); }
+      try { task = await this.execution(record).observe(() => this.runtime.read(record.reference!)); }
       catch { await this.unknown(record, 'native_task_unavailable'); return; }
       await this.observed(record, { task, reference: record.reference }, observation);
       await this.acknowledge(record);

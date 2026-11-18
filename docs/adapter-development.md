@@ -7,7 +7,9 @@ Start with the existing interfaces, rather than inventing another task protocol:
 | `src/adapters/types.ts` | RuntimeAdapter, capabilities, observation and original execution reference |
 | `src/adapters/a2a-runtime.ts` | Existing Hermes/OpenClaw A2A implementation |
 | `src/adapters/native-a2a.ts` | Native Card and endpoint validation, SendMessage/GetTask transport |
-| `src/connector/loop.ts` | Claim, admission, heartbeat, dispatch, pending reports and recovery |
+| `src/connector/loop.ts`, `relay-loop.ts` | Protocol claims, admission, pending receipts and original-task recovery |
+| `src/connector/execution-lifecycle.ts` | Shared heartbeat and durable one-dispatch barrier |
+| `src/connector/config.ts` | In-memory client/native/CLI normalization of existing v1/v2 files |
 | `src/connector/state.ts` | Durable journal and original runtime binding |
 | `contracts/agent-work/v1/schema.json` | Public work/report contract |
 
@@ -48,6 +50,8 @@ An implementation should show:
 4. A changed Card/origin/reference cannot redirect the native credential.
 5. Result delivery persists before acknowledgement.
 6. Unsupported input/cancel is reported honestly.
+7. The original journal dispatch marker is committed before native execution;
+   existing Work v1 admission and original-task recovery ordering stay unchanged.
 
 For a real native integration, use an isolated profile you own and document its
 exact version. Keep keys, prompts, private files and personal profiles out of the
