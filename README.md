@@ -7,7 +7,6 @@ Connect an Agent you run to [Envar](https://envar.ai). Start onboarding from you
 | Project | Public scope | License |
 | --- | --- | --- |
 | [EnvarConnect](https://github.com/EnvarAI/EnvarConnect) | Native connectors, task SDK, Agent Work v1 contracts | MIT |
-| [EnvarPay](https://github.com/EnvarAI/EnvarPay) | Retained legacy seller SDK; retired from new Envar integrations | MIT |
 
 The hosted Envar website, account service and ledger are maintained separately.
 This repository does not include a self-hosted copy of that platform. Installing
@@ -24,7 +23,7 @@ connection and any spending grant separately.
 | Upgrade to the WebSocket-only release | [Upgrade notes](docs/compatibility.md) |
 | Make a first contribution | [Concrete task briefs](docs/contribution-tasks.md) |
 
-Use Connect for new buyer and seller integrations. Envar owns service registration, orders and account-balance settlement; Connect owns local execution and recovery. The EnvarPay repository remains available for historical source and recovery, but is no longer a required or recommended installation. A compatible enrollment/WorkService server is still required for a live connection.
+Use Connect for new buyer and seller integrations. Envar owns service registration, orders and account-balance settlement; Connect owns local execution and recovery. A compatible enrollment/WorkService server is still required for a live connection.
 
 ## One-prompt onboarding
 
@@ -39,7 +38,7 @@ for current text execution, native authentication, supervision and cloud boundar
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1123.2
+npm install --global --ignore-scripts @envarai/connect@2026.1123.3
 envar-connect --version
 ```
 
@@ -61,7 +60,7 @@ uncertain mutation is never automatically replayed by the transport.
 
 This is a breaking release. Install it together with the matching EnvarAI
 server, and use `onboard` to create a current version-2 configuration. The old
-`connect --agent`, `connector` subcommand, `envarpay connector` wrapper and HTTP
+`connect --agent`, the legacy `connector` subcommand and HTTP
 receiver endpoints have been removed. There is no polling fallback. Browser
 onboarding is an HTTPS authorization flow; it does not dispatch tasks.
 
@@ -92,6 +91,6 @@ are not currently part of the verified public installation path. Use the npm
 package, the official bundled download, or build the checked-out `Dockerfile`
 locally; a managed image may require an authorized GHCR login.
 
-EnvarPay is retired from new integrations. Its repository, releases and historical seller journals remain available for audit. New Connect state uses `~/.envar`; historical journals should not be deleted merely to retry an uncertain task.
+New Connect state uses `~/.envar`. Preserve historical execution journals for recovery and audit.
 
 Codex and Claude Code can use explicitly selected [local service profiles](docs/service-profiles.md) to expose approved skills, tools and MCP servers. Default receivers remain text-only.

@@ -1,11 +1,11 @@
 # WebSocket release boundary
 
-Install `@envarai/connect@2026.1123.2` together with the matching EnvarAI release.
+Install `@envarai/connect@2026.1123.3` together with the matching EnvarAI release.
 This release intentionally has no legacy server negotiation or HTTP polling
 fallback. Existing internal Agents should onboard again with a current version-2
 configuration. Keep any journal needed to investigate an original execution.
 
-Removed: `envar-connect connector`, `connect --agent`, the EnvarPay CLI wrapper,
+Removed: `envar-connect connector`, `connect --agent`, legacy CLI wrappers,
 version-1 connection configuration, legacy device pairing and HTTP receiver
 routes. Current service use, receiving and spending permissions remain separate.
 
@@ -17,4 +17,4 @@ A runtime capability such as input, cancellation or restart lookup is available
 only when its adapter actually implements it. WebSocket support does not enable
 additional native runtime capabilities.
 
-EnvarPay is retired from new integrations. Its historical repository and execution journals remain available; use standalone Connect for current receiving.
+Use standalone Connect for current receiving; preserve original execution journals for recovery.

@@ -1,7 +1,5 @@
-import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { privateJson, privateText } from './files.js';
-import { existsSync } from 'node:fs';
 import { platformOrigin } from './origin.js';
 import { EnvarWorkClient } from './client.js';
 import { ConnectorJournal, type ConnectorBinding } from './state.js';
@@ -25,17 +23,7 @@ export interface NormalizedConnectorConfig {
     | { kind: 'cli'; adapter: 'codex' | 'claude-code'; execution?: CliExecutionConfig };
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export function connectorDirectory(agentId?: string, directory?: string): string {
-  if (directory) return resolve(directory);
-  if (!agentId && existsSync(join(homedir(), '.envar', 'current-connection.json'))) {
-    const current = privateJson<{ directory: string }>(join(homedir(), '.envar', 'current-connection.json'));
-    if (typeof current.directory !== 'string' || !current.directory.startsWith(join(homedir(), '.envar', 'connectors') + '/'))
-      throw new Error('Choose an explicit --agent UUID or --directory');
-    return current.directory;
-  }
-  if (!agentId || !uuid.test(agentId)) throw new Error('Provide --agent UUID or the original --directory');
-  return join(homedir(), '.envar', 'connectors', agentId);
-}
+export { connectorDirectory } from './paths.js';
 export function readConnector(directory: string): ConnectorConfig {
   const config = privateJson<ConnectorConfig>(join(directory, 'connector.json'));
   normalizeConnector(config);

@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { connectorAgentIds } from './paths.js';
 import { homedir } from 'node:os';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { onboard } from './onboarding.js';
@@ -36,7 +37,7 @@ export async function runUnifiedCli(args: string[]): Promise<void> {
     'service-profile':{type:'string'}, runtime:{type:'string'}, origin:{type:'string'}, receive:{type:'boolean'}, workspace:{type:'string'}, profile:{type:'string'},
     home:{type:'string'}, 'native-agent':{type:'string'}, 'allow-local-http':{type:'boolean'}, json:{type:'boolean'},
     'approve-local-configuration':{type:'boolean'}, 'install-receiver':{type:'boolean'}, directory:{type:'string'}, agent:{type:'string'},
-    'new-pairing':{type:'boolean'}, file:{type:'string'}, query:{type:'string'}, help:{type:'boolean',short:'h'},
+    'new-pairing':{type:'boolean'}, 'state-root':{type:'string'}, file:{type:'string'}, query:{type:'string'}, help:{type:'boolean',short:'h'},
     connection:{type:'string'},
   } });
   const [command,operation,target] = positionals;
@@ -55,7 +56,7 @@ export async function runUnifiedCli(args: string[]): Promise<void> {
     onboard: { usage:'onboard', run: async () => {
       const runtime = (!values.runtime || values.runtime === 'auto' ? detectRuntime() : values.runtime) as RuntimeKind;
       const result = await onboard({ origin: values.origin ?? 'https://envar.ai', runtime, receive: values.receive ?? false,
-        home: values.home, nativeAgent: values['native-agent'], workspace: values.workspace, profile: values.profile, serviceProfile: values['service-profile'],
+        stateRoot: values['state-root'] ? resolve(values['state-root']) : undefined, home: values.home, nativeAgent: values['native-agent'], workspace: values.workspace, profile: values.profile, serviceProfile: values['service-profile'],
         allowLocalHttp: values['allow-local-http'], configurationApproved: values['approve-local-configuration'], fresh: values['new-pairing'], output: print });
       const client = connectorClient(result.directory, result.config);
       if (result.restartRequired) {
@@ -77,8 +78,7 @@ export async function runUnifiedCli(args: string[]): Promise<void> {
       if (supervisor && result.testApproved) await waitCheck(result.directory);
     } },
     connections: { usage:'connections', run: async () => {
-      const root=join(homedir(),'.envar','connectors');
-      print({ agents:existsSync(root)?readdirSync(root).filter(id=>/^[0-9a-f-]{36}$/.test(id)):[] });
+      print({ agents:connectorAgentIds() });
     } },
     services: { usage:'services list', run: async () => {
       if (operation !== 'list') throw new Error('Use services list.');
