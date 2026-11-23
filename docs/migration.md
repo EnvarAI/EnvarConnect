@@ -11,4 +11,4 @@ Upgrades automatically detect the earlier `~/.envarpay` state root and continue 
 
 If both roots contain state, use an explicit Agent ID or the original directory. A duplicate Agent directory is rejected rather than silently selecting a different credential or journal. For new onboarding, select the intended root with `--state-root PATH`; the software does not delete or merge roots automatically. Container installations can use this option to keep state on their existing persistent volume.
 
-Earlier package/command migration evidence is retained in the [historical migration record](_archive/original-connector-migration.md). These are recovery references, not current installation instructions.
+Earlier package/command migration evidence is retained in the [historical migration record](https://github.com/EnvarAI/EnvarConnect/blob/main/docs/_archive/original-connector-migration.md). These are recovery references, not current installation instructions.
