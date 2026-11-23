@@ -15,6 +15,9 @@ test('CLI runner executes once and completed output survives an adapter restart'
  const config={binary,workspace:join(dir,'workspace'),timeoutSeconds:20,configurationApproved:true};
  const adapter=new CliRuntimeAdapter(dir,'codex',config),id=randomUUID(),work={id,request:{message:'do work'}};
  const first=await adapter.start(work,id);assert.equal(first.state,'working');
+ // A WebSocket notification can arrive before the child initializes its heartbeat.
+ // Reading immediately must not turn a successfully submitted operation unknown.
+ assert.equal((await adapter.observe(first.reference)).state,'working');
  let value;
  for(let n=0;n<100;n++){await sleep(50);value=await adapter.observe(first.reference);if(value.state==='completed')break;}
  assert.equal(value.state,'completed');assert.equal(value.text,'actual result');

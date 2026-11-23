@@ -8,7 +8,7 @@ import { privateJson, writePrivateJson } from '../connector/files.js';
 export async function executeCli(folder: string): Promise<void> {
   const file = join(folder, 'result.json'), row = privateJson<CliExecutionRecord>(file);
   const request = privateJson<{ config: CliExecutionConfig; runtime: string; message: string }>(join(folder, 'request.json'));
-  if (row.state !== 'unknown') throw new Error('The original runner has already started.');
+  if (row.state !== 'working' || row.workerPid) throw new Error('The original runner has already started.');
   // Each order has its own empty working directory; no personal conversational context is copied.
   const workspace = join(request.config.workspace, 'envar-' + row.key);
   mkdirSync(workspace, { mode: 0o700 });

@@ -14,7 +14,6 @@ export const relayBlocksDispatch = (record: RelayRecord): boolean =>
 
 /** Uses the existing journal and process lock; unknown sends never get another POST. */
 export class RelayLoop {
-  private lastHello = 0;
   private enabled = false;
   constructor(readonly client: EnvarWorkClient, readonly runtime: RelayRuntime, readonly journal: ConnectorJournal) {}
   private queue(record: RelayRecord, kind: RelayEvent['kind'], payload: Record<string, unknown>, observation?: number): void {
@@ -234,17 +233,17 @@ export class RelayLoop {
       await this.acknowledge(record);
     }
   }
-  async tick(allowNew: boolean): Promise<void> {
+  async tick(allowNew: boolean, sync = true): Promise<void> {
     let handshakeError: unknown;
-    if (Date.now() - this.lastHello > 20000) {
+    // Revalidate the native binding on push/reconnect, never on an idle polling timer.
+    if (sync || !this.enabled) {
       try { this.enabled = await this.client.relayHello(await this.runtime.cardDigest(), this.runtime.version ?? '1'); }
       catch (error) {
         if (error instanceof WorkApiError && [401, 403].includes(error.status)) throw error;
         this.enabled = false; handshakeError = error;
       }
-      this.lastHello = Date.now();
     }
-    if (this.enabled) for (const command of await this.client.relayCommands()) this.journal.ingestRelay(command);
+    if (sync && this.enabled) for (const command of await this.client.relayCommands()) this.journal.ingestRelay(command);
     for (const record of this.journal.pendingRelay().filter(value => value.phase !== 'received')) await this.advance(record);
     if (allowNew && !this.journal.pendingRelay().some(relayBlocksDispatch)) {
       const next = this.journal.pendingRelay().find(value => value.phase === 'received');

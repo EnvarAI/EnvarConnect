@@ -1,6 +1,8 @@
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { privateJson, privateText } from './files.js';
-import { platformOrigin } from './pairing.js';
+import { existsSync } from 'node:fs';
+import { platformOrigin } from './origin.js';
 import { EnvarWorkClient } from './client.js';
 import { ConnectorJournal, type ConnectorBinding } from './state.js';
 import { HermesRuntimeAdapter } from '../adapters/hermes.js';
@@ -10,7 +12,7 @@ import { CliRuntimeAdapter, type CliExecutionConfig } from '../adapters/cli-runt
 export type RuntimeKind = 'hermes' | 'openclaw' | 'codex' | 'claude-code' | 'generic-client';
 
 export interface ConnectorConfig {
-  version: 1 | 2; origin: string; agentId: string; connectionId: string; framework: RuntimeKind;
+  version: 2; origin: string; agentId: string; connectionId: string; framework: RuntimeKind;
   scopes: string[]; expiresAt: string; allowLocalHttp?: boolean; nativeConfigured: boolean; disabled?: boolean;
   runtime: { home: string; configFile?: string; port?: number; agentId: string; cardUrl: string; binary: string[]; peerName: string; mcpName: string };
   journalCardUrl?: string;
@@ -23,15 +25,25 @@ export interface NormalizedConnectorConfig {
     | { kind: 'cli'; adapter: 'codex' | 'claude-code'; execution?: CliExecutionConfig };
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export { connectorDirectory } from './paths.js';
+export function connectorDirectory(agentId?: string, directory?: string): string {
+  if (directory) return resolve(directory);
+  if (!agentId && existsSync(join(homedir(), '.envar', 'current-connection.json'))) {
+    const current = privateJson<{ directory: string }>(join(homedir(), '.envar', 'current-connection.json'));
+    if (typeof current.directory !== 'string' || !current.directory.startsWith(join(homedir(), '.envar', 'connectors') + '/'))
+      throw new Error('Choose an explicit --agent UUID or --directory');
+    return current.directory;
+  }
+  if (!agentId || !uuid.test(agentId)) throw new Error('Provide --agent UUID or the original --directory');
+  return join(homedir(), '.envar', 'connectors', agentId);
+}
 export function readConnector(directory: string): ConnectorConfig {
   const config = privateJson<ConnectorConfig>(join(directory, 'connector.json'));
   normalizeConnector(config);
   return config;
 }
-/** Normalize historical files in memory; never rewrite their credential or journal identity. */
+/** Validate the current connection and preserve its original execution binding. */
 export function normalizeConnector(config: ConnectorConfig): NormalizedConnectorConfig {
-  if (![1,2].includes(config.version) || !uuid.test(config.agentId) || !uuid.test(config.connectionId) ||
+  if (config.version !== 2 || !uuid.test(config.agentId) || !uuid.test(config.connectionId) ||
     !['hermes','openclaw','codex','claude-code','generic-client'].includes(config.framework) || !Array.isArray(config.scopes) || !config.runtime?.cardUrl ||
     config.runtime.peerName !== 'envar-' + config.agentId || config.runtime.mcpName !== 'envar-' + config.agentId)
     throw new Error('Invalid Connector configuration');

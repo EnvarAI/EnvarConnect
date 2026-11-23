@@ -13,6 +13,7 @@ const claimValue = (record: LocalWork) => ({ id: record.claim!.id, fence: record
 export class ConnectorLoop {
   private running = false;
   private verified = false;
+  private lastGeneration = -1;
   private readonly relay?: RelayLoop;
   constructor(readonly client: EnvarWorkClient, readonly runtime: RuntimeAdapter, readonly journal: ConnectorJournal) {
     if (runtime.relay) this.relay = new RelayLoop(client, runtime.relay, journal);
@@ -154,8 +155,10 @@ export class ConnectorLoop {
         await this.client.reportRuntime(readiness);
         this.verified = true;
       }
+      const sync = this.lastGeneration !== this.client.generation;
+      this.lastGeneration = this.client.generation;
       let after = 0;
-      for (;;) {
+      for (; sync;) {
         const inbox = await this.client.inbox(after);
         for (const delivery of inbox.items) this.journal.ingest(delivery);
         if (!inbox.next_cursor) break;
@@ -165,7 +168,7 @@ export class ConnectorLoop {
       // Resume admitted work and reports before claiming new work. One native execution at a time.
       const active = this.journal.pending().filter(record => record.phase !== 'prepared');
       for (const record of active) await this.advance(record);
-      await this.relay?.tick(!this.journal.pending().some(record => record.phase !== 'prepared'));
+      await this.relay?.tick(!this.journal.pending().some(record => record.phase !== 'prepared'), sync);
       if (!this.journal.pending().some(record => record.phase !== 'prepared') && !this.journal.pendingRelay().some(relayBlocksDispatch)) {
         const next = this.journal.pending().find(record => record.phase === 'prepared');
         if (next) await this.advance(next);
@@ -208,15 +211,27 @@ export class ConnectorLoop {
     } finally { this.running = false; }
   }
   async run(signal: AbortSignal, onError: (error: unknown) => void = () => {}): Promise<void> {
-    while (!signal.aborted) {
-      let delay = 5000;
-      try { await this.tick(); }
-      catch (error) {
-        onError(error);
-        if (error instanceof WorkApiError && [401, 403].includes(error.status)) throw error;
-        delay = error instanceof WorkApiError && error.retryAfter ? error.retryAfter * 1000 : 15000;
+    let delay = 1000;
+    try {
+      while (!signal.aborted) {
+        try {
+          await this.client.subscribeReceiver();
+          while (!signal.aborted) {
+            await this.tick();
+            delay = 1000;
+            const active = this.journal.pending().length > 0 || this.journal.pendingRelay().length > 0;
+            // Only active native executions need observation timers. Idle receivers wait for push.
+            await this.client.waitForChange(this.lastGeneration, signal, active ? 5000 : undefined);
+          }
+        } catch (error) {
+          onError(error);
+          if (error instanceof WorkApiError && [401, 403].includes(error.status)) throw error;
+          this.lastGeneration = -1;
+          try { await sleep(delay + Math.random() * delay, undefined, { signal }); }
+          catch { if (!signal.aborted) throw new Error('Connector reconnect interrupted'); }
+          delay = Math.min(delay * 2, 30000);
+        }
       }
-      try { await sleep(delay, undefined, { signal }); } catch { if (!signal.aborted) throw new Error('Connector wait interrupted'); }
-    }
+    } finally { this.client.close(); }
   }
 }

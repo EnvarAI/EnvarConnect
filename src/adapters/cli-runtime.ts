@@ -99,8 +99,12 @@ export class CliRuntimeAdapter implements RuntimeAdapter {
     await this.probe();
     // Exclusive intent file prevents replay even after a crash before native process creation.
     writeFileSync(join(folder, 'intent.json'), JSON.stringify({ binding: this.binding, requestDigest: input }), { flag: 'wx', mode: 0o600, flush: true });
+    const startedAt = new Date().toISOString();
+    // Push can cause an immediate observation, before the child starts. This is
+    // admitted startup, not an unknown outcome. The heartbeat deadline below
+    // still detects a child that never starts; the exclusive intent forbids replay.
     writePrivateJson(path, { version: 1, key: executionKey, adapter: this.key, binding: this.binding,
-      requestDigest: input, state: 'unknown', startedAt: new Date().toISOString() } satisfies CliExecutionRecord);
+      requestDigest: input, state: 'working', startedAt, observedAt: startedAt } satisfies CliExecutionRecord);
     writePrivateJson(join(folder, 'request.json'), { config: this.config, runtime: this.key, message: work.request.message });
     const child = spawn(process.execPath, [fileURLToPath(new URL('./cli-worker.js', import.meta.url)), folder], {
       detached: true, stdio: 'ignore', env: { ...process.env, ENVAR_EXECUTION_CHILD: '1' },

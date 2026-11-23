@@ -39,3 +39,12 @@ relay only when the server explicitly advertises `a2a_relay_v1: true`. An older
 server or a paused relay therefore continues Work v1 without a request to an
 unknown route. Actual 401/403 authorization failures remain fatal; they are
 never treated as evidence of protocol compatibility.
+
+## Platform transport
+
+All Connect operations use `/api/v1/connect` over authenticated WSS. There are no
+HTTP `/connector/a2a-relay/*` routes. `relay_hello`, `list_relay_commands`,
+`get_relay_command`, `relay_claim`, `relay_admit`, `relay_lease`, `relay_recover`,
+`relay_events` and `relay_ack` are named RPC operations. Listing is triggered by
+server push or reconnect, never an idle polling timer. Active native task lookup
+remains the runtime adapter's observation mechanism.

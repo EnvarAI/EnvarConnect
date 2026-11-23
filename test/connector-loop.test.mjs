@@ -156,6 +156,7 @@ test('unacknowledged control is not invoked twice after restart', async t => {
   const f = fixture(t); await f.loop.tick();
   f.state.deliveries.push({ id: 2, kind: 'cancel', work: structuredClone(f.work), event: {} });
   f.faults.ackLost = true;
+  f.client.generation = 1;
   await assert.rejects(f.loop.tick()); assert.equal(f.calls.cancel, 1);
   f.reopen(); await f.loop.tick(); assert.equal(f.calls.cancel, 1); assert.ok(f.calls.ack.includes(2));
 });

@@ -13,9 +13,9 @@ function config(version, framework = 'hermes') {
     scopes:['connection:read','work:send','work:receive','work:report'], nativeConfigured:true,
     runtime:{ home:'/native', agentId:'native-main', cardUrl:'http://127.0.0.1:9900/card', binary:[], peerName:'envar-' + agentId, mcpName:'envar-' + agentId } };
 }
-test('v1/v2 normalize receiver capabilities without changing stored files or the original journal binding', t => {
+test('current configuration preserves its original journal binding', t => {
   const directory=mkdtempSync(join(tmpdir(),'envar-config-')); t.after(()=>rmSync(directory,{recursive:true,force:true}));
-  for (const version of [1,2]) {
+  for (const version of [2]) {
     const stored=config(version); stored.journalCardUrl='envar-local:original-client';
     const path=join(directory,'connector.json'); writePrivateJson(path,stored); const before=readFileSync(path,'utf8');
     const loaded=readConnector(directory), normalized=normalizeConnector(loaded);
@@ -39,4 +39,8 @@ test('client and CLI configurations do not treat compatibility Card placeholders
     assert.equal(runtimeAdapter('/unused',cli).key,framework);
   }
   assert.throws(()=>normalizeConnector({...client,disabled:true}),/disconnected/);
+});
+
+test('retired connection formats require fresh onboarding', () => {
+  assert.throws(() => normalizeConnector(config(1)), /Invalid Connector configuration/);
 });

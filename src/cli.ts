@@ -6,7 +6,7 @@ if (args[0] === '--version' || args[0] === '-v') {
 } else {
   try {
     const { runUnifiedCli } = await import('./connector/unified-cli.js');
-    await runUnifiedCli(args[0] === 'connector' ? args.slice(1) : args, undefined, args[0] === 'connector');
+    await runUnifiedCli(args);
   } catch (error) {
     console.error(error instanceof Error ? error.message : 'Connector operation failed');
     process.exitCode = 1;
