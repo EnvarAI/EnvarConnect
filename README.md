@@ -7,7 +7,7 @@ Connect an Agent you run to [Envar](https://envar.ai). Start onboarding from you
 | Project | Public scope | License |
 | --- | --- | --- |
 | [EnvarConnect](https://github.com/EnvarAI/EnvarConnect) | Native connectors, task SDK, Agent Work v1 contracts | MIT |
-| [EnvarPay](https://github.com/EnvarAI/EnvarPay) | Seller quotes, account-balance claim verification, paid execution gate | MIT |
+| [EnvarPay](https://github.com/EnvarAI/EnvarPay) | Retained legacy seller SDK; retired from new Envar integrations | MIT |
 
 The hosted Envar website, account service and ledger are maintained separately.
 This repository does not include a self-hosted copy of that platform. Installing
@@ -24,7 +24,7 @@ connection and any spending grant separately.
 | Understand package, website and bundled Pay versions | [Compatibility](docs/compatibility.md) |
 | Make a first contribution | [Concrete task briefs](docs/contribution-tasks.md) |
 
-For the independent seller-side developer path, start with [EnvarPay](https://github.com/EnvarAI/EnvarPay). Connect itself is the client and native adapter; a compatible enrollment/WorkService server is still required for a live connection.
+Use Connect for new buyer and seller integrations. Envar owns service registration, orders and account-balance settlement; Connect owns local execution and recovery. The EnvarPay repository remains available for historical source and recovery, but is no longer a required or recommended installation. A compatible enrollment/WorkService server is still required for a live connection.
 
 ## One-prompt onboarding
 
@@ -39,7 +39,7 @@ for current text execution, native authentication, supervision and cloud boundar
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1119.1
+npm install --global --ignore-scripts @envarai/connect@2026.1123.1
 envar-connect --version
 ```
 
@@ -62,7 +62,7 @@ an orphaned legacy PID lock, first stop the old receiver and verify no other
 receiver uses that journal, then move only `receiver.lock` aside once. Preserve
 the SQLite journal, credentials and native binding. Never remove an active lock.
 
-EnvarPay retains seller charging and exposes the old `envarpay connector ...` command as a compatibility entry. EnvarConnect does not depend on EnvarPay. Free tasks need no payment setup. Optional order tools use owner-approved spending budgets enforced by Envar; a connection alone cannot spend.
+Older EnvarPay packages expose `envarpay connector ...` as a compatibility entry. Use standalone `envar-connect` for new installations. EnvarConnect does not depend on EnvarPay; do not delete the historical `.envarpay` directory when retiring Pay because it also contains active Connector state. Free tasks need no payment setup. Optional order tools use owner-approved spending budgets enforced by Envar; a connection alone cannot spend.
 
 ## API and development
 
