@@ -66,3 +66,7 @@ fields to reuse another connection's task or spending authority.
 
 Read [native setup](native-connector.md), [migration](migration.md), and
 [adapter development](adapter-development.md) before changing an installation.
+
+## EnvarPay retirement
+
+EnvarPay is no longer part of new Envar integrations. Its repository, published versions and historical seller journals are retained. Use standalone Connect for local receiving and Envar for service registration and settlement. The `.envarpay` state directory remains supported; removing it would also remove active Connector credentials and execution journals. Migrate the original runtime binding without creating replacement executions.
