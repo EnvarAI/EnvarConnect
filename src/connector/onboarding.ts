@@ -2,20 +2,21 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { privateDirectory, privateJson, privateText, writePrivate, writePrivateJson } from './files.js';
-import { platformOrigin } from './pairing.js';
+import { platformOrigin } from './origin.js';
 import { digest } from '../shared/json.js';
 import { inspectNative, configureNative } from '../adapters/configure-native.js';
 import { inspectCli, type CliExecutionConfig } from '../adapters/cli-runtime.js';
-import { connectorStateRoot } from './paths.js';
-import { createCodexServiceProfile } from '../adapters/codex-profile.js';
-import { connectorClient, type ConnectorConfig, type RuntimeKind } from './config.js';
+import { inspectServiceProfile } from '../adapters/service-profile.js';
+import { createCodexServiceProfile, readCodexConfiguration, codexEnvironmentKeys } from '../adapters/codex-profile.js';
+import { connectorClient, connectorDirectory, type ConnectorConfig, type RuntimeKind } from './config.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export interface OnboardingOptions {
   origin: string; runtime: RuntimeKind; receive: boolean; home?: string; nativeAgent?: string;
-  workspace?: string; profile?: string; allowLocalHttp?: boolean; configurationApproved?: boolean; fresh?: boolean;
+  workspace?: string; profile?: string; serviceProfile?: string; allowLocalHttp?: boolean; configurationApproved?: boolean; fresh?: boolean;
   stateRoot?: string; fetch?: typeof fetch; signal?: AbortSignal; poll?: () => Promise<void>;
   output: (value: Record<string, unknown>) => void;
 }
@@ -47,7 +48,8 @@ export async function onboard(options: OnboardingOptions): Promise<{ directory: 
   options.origin = platformOrigin(options.origin, options.allowLocalHttp);
   if (!['hermes','openclaw','codex','claude-code','generic-client'].includes(options.runtime)) throw new Error('Select an available runtime.');
   if (options.receive && options.runtime === 'generic-client') throw new Error('Select an execution adapter to offer services.');
-  const root = options.stateRoot ?? connectorStateRoot();
+  if (options.serviceProfile && (!options.receive || !['codex','claude-code'].includes(options.runtime))) throw new Error('Service profiles require a Codex or Claude Code receiver.');
+  if (options.serviceProfile && options.profile) throw new Error('Choose a service-profile directory or a named model profile, not both.');
   let native: ReturnType<typeof inspectNative> | undefined, execution: CliExecutionConfig | undefined;
   if (options.receive) {
     if (!options.configurationApproved) throw new Error('Review the selected local runtime and allow its configuration with --approve-local-configuration.');
@@ -55,14 +57,22 @@ export async function onboard(options: OnboardingOptions): Promise<{ directory: 
       native = inspectNative(options.runtime, { home: options.home, nativeAgent: options.nativeAgent });
     else {
       execution = inspectCli(options.runtime as 'codex' | 'claude-code', options.workspace ?? '', options.profile);
+      if (options.serviceProfile) execution.serviceProfile=inspectServiceProfile(options.runtime as 'codex'|'claude-code',options.serviceProfile);
       if (options.runtime === 'codex') {
-        const profile=await createCodexServiceProfile(execution.binary,root,options.profile);
-        execution.codexHome=profile.home;execution.codexConfigDigest=profile.digest;execution.environmentKeys=profile.environmentKeys;
-      }
-      else execution.environmentKeys=['ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','ANTHROPIC_BASE_URL','ANTHROPIC_MODEL','CLAUDE_CODE_OAUTH_TOKEN',
+        if(execution.serviceProfile) {
+          const native=await readCodexConfiguration(execution.binary,undefined,execution.serviceProfile.root);
+          execution.environmentKeys=codexEnvironmentKeys(native);
+        } else {
+          const profile=await createCodexServiceProfile(execution.binary,options.stateRoot ?? join(homedir(), '.envar'),options.profile);
+          execution.codexHome=profile.home;execution.codexConfigDigest=profile.digest;execution.environmentKeys=profile.environmentKeys;
+        }
+      } else execution.environmentKeys=['ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','ANTHROPIC_BASE_URL','ANTHROPIC_MODEL','CLAUDE_CODE_OAUTH_TOKEN',
         'CLAUDE_CODE_USE_BEDROCK','CLAUDE_CODE_USE_VERTEX','CLAUDE_CODE_USE_FOUNDRY','AWS_PROFILE','AWS_REGION','GOOGLE_APPLICATION_CREDENTIALS','ANTHROPIC_VERTEX_PROJECT_ID'];
+      execution.environmentKeys=[...new Set([...(execution.environmentKeys??[]),...(execution.serviceProfile?.environmentKeys??[])])];
+
     }
   }
+  const root = options.stateRoot ?? join(homedir(), '.envar');
   privateDirectory(root); privateDirectory(join(root, 'onboarding'));
   const binding = digest({ origin: options.origin, runtime: options.runtime, receive: options.receive, native: native ?? null, execution: execution ?? null });
   const file = join(root, 'onboarding', binding + '.json');
@@ -106,7 +116,7 @@ export async function onboard(options: OnboardingOptions): Promise<{ directory: 
           !/^envar_agent_[A-Za-z0-9_-]{32,128}$/.test(receipt.token) || !Array.isArray(receipt.scopes) ||
           !receipt.scopes.every(scope => allowed.includes(scope)) || !['connection:read','work:read','work:send'].every(scope => receipt.scopes.includes(scope)) ||
           !Number.isFinite(Date.parse(receipt.expires_at))) throw new Error('Unexpected connection identity or authority.');
-      const directory = join(root, 'connectors', receipt.agent_id);
+      const directory = options.stateRoot ? join(root, 'connectors', receipt.agent_id) : connectorDirectory(receipt.agent_id);
       privateDirectory(directory);
       let previous: ConnectorConfig | undefined;
       if (existsSync(join(directory, 'connector.json'))) {

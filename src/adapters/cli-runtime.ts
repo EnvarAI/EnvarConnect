@@ -10,6 +10,7 @@ import { RuntimeControlUnsupported } from './a2a-runtime.js';
 import type { Work } from '../connector/contracts.generated.js';
 import type { RelayRuntime, RuntimeAdapter, RuntimeObservation, RuntimeReadiness, RuntimeReference } from './types.js';
 import type { RelayReference } from '../connector/relay-types.js';
+import { verifyServiceProfile, type ServiceProfile } from './service-profile.js';
 
 export interface CliExecutionConfig {
   binary: string; workspace: string; profile?: string; timeoutSeconds: number;
@@ -18,6 +19,7 @@ export interface CliExecutionConfig {
   disabledMcpServers?: string[];
   codexHome?: string; codexConfigDigest?: string;
   environmentKeys?: string[];
+  serviceProfile?: ServiceProfile;
 }
 export interface CliExecutionRecord {
   version: 1; key: string; adapter: string; binding: string; requestDigest: string;
@@ -60,9 +62,9 @@ export class CliRuntimeAdapter implements RuntimeAdapter {
     this.relay = { version:'2', cardDigest:async()=>this.binding, send,
       prepareSend:async(params,execution)=>{await this.probe();return ()=>send(params,execution);},
       read:async(reference)=>{
-        if (!('kind' in reference) || reference.kind !== 'local_cli_execution' || reference.adapter !== this.key || reference.binding_digest !== this.binding)
+        if (!('kind' in reference) || reference.kind !== 'local_cli_execution' || reference.adapter !== this.key || !/^[0-9a-f]{64}$/.test(reference.binding_digest))
           throw new Error('Read only the original local execution reference.');
-        return this.task(await this.observe(this.reference(reference.task_id)),reference);
+        return this.task(await this.observe(this.reference(reference.task_id, reference.binding_digest)),reference);
       },
     };
   }
@@ -74,19 +76,22 @@ export class CliRuntimeAdapter implements RuntimeAdapter {
       ...(observation.state === 'completed' && observation.text ? { artifacts:[{artifactId:reference.task_id,parts:[{text:observation.text}]}] } : {}) };
   }
   async probe(): Promise<RuntimeReadiness> {
-    if(this.key==='codex' && this.config.codexHome && digest(privateText(join(this.config.codexHome,'config.toml')))!==this.config.codexConfigDigest)
+    if (this.config.serviceProfile) verifyServiceProfile(this.key, this.config.serviceProfile);
+    if(!this.config.serviceProfile && this.key==='codex' && this.config.codexHome && digest(privateText(join(this.config.codexHome,'config.toml')))!==this.config.codexConfigDigest)
       throw new Error('The approved Codex service configuration changed. Review it before receiving tasks.');
     const text = execFileSync(this.config.binary, ['--version'], { encoding: 'utf8', timeout: 15000, maxBuffer: 65536, stdio: 'pipe' });
     return { adapter: this.key, runtimeVersion: text.match(/\d+\.\d+(?:\.[\w.+-]+)?/)?.[0] ?? 'unknown', versionSource: 'cli_version',
       capabilities: { recover: true, input: false, cancel: false },
       recovery: { taskLookupAfterRestart: true, executionKeyLookup: false, resultPersistence: true }, maxConcurrency: 1,
-      receiverSupervised: process.env.ENVAR_SUPERVISED_RECEIVER === '1' };
+      receiverSupervised: process.env.ENVAR_SUPERVISED_RECEIVER === '1',
+      ...(this.config.serviceProfile ? { executionProfile: { mode: 'service-profile' as const,
+        digest: this.config.serviceProfile.digest, skillCount: this.config.serviceProfile.skillCount } } : {}) };
   }
   private execution(key: string) {
     if (!uuid.test(key)) throw new Error('Use the original execution UUID.');
     return join(this.directory, 'executions', key);
   }
-  private reference(key: string): RuntimeReference { return { adapter: this.key, version: 1, value: { execution_key: key, binding: this.binding } }; }
+  private reference(key: string, binding = this.binding): RuntimeReference { return { adapter: this.key, version: 1, value: { execution_key: key, binding } }; }
   async start(work: Work, executionKey: string): Promise<RuntimeObservation> {
     if (work.id !== executionKey) throw new Error('Execute the original work only.');
     const folder = this.execution(executionKey), path = join(folder, 'result.json'), input = digest(work.request);
@@ -94,13 +99,17 @@ export class CliRuntimeAdapter implements RuntimeAdapter {
     if (existsSync(path)) {
       const original = privateJson<CliExecutionRecord>(path);
       if (original.requestDigest !== input) throw new Error('Execution key belongs to a different request.');
-      return this.observe(this.reference(executionKey));
+      return this.observe(this.reference(executionKey, original.binding));
     }
     await this.probe();
     // Exclusive intent file prevents replay even after a crash before native process creation.
     writeFileSync(join(folder, 'intent.json'), JSON.stringify({ binding: this.binding, requestDigest: input }), { flag: 'wx', mode: 0o600, flush: true });
+    const startedAt = new Date().toISOString();
+    // Push can cause an immediate observation, before the child starts. This is
+    // admitted startup, not an unknown outcome. The heartbeat deadline below
+    // still detects a child that never starts; the exclusive intent forbids replay.
     writePrivateJson(path, { version: 1, key: executionKey, adapter: this.key, binding: this.binding,
-      requestDigest: input, state: 'unknown', startedAt: new Date().toISOString() } satisfies CliExecutionRecord);
+      requestDigest: input, state: 'working', startedAt, observedAt: startedAt } satisfies CliExecutionRecord);
     writePrivateJson(join(folder, 'request.json'), { config: this.config, runtime: this.key, message: work.request.message });
     const child = spawn(process.execPath, [fileURLToPath(new URL('./cli-worker.js', import.meta.url)), folder], {
       detached: true, stdio: 'ignore', env: { ...process.env, ENVAR_EXECUTION_CHILD: '1' },
@@ -111,10 +120,10 @@ export class CliRuntimeAdapter implements RuntimeAdapter {
   }
   async observe(reference: RuntimeReference): Promise<RuntimeObservation> {
     const key = String(reference.value.execution_key ?? '');
-    if (reference.adapter !== this.key || reference.value.binding !== this.binding || reference.version !== 1)
+    if (reference.adapter !== this.key || typeof reference.value.binding !== 'string' || !/^[0-9a-f]{64}$/.test(reference.value.binding) || reference.version !== 1)
       throw new Error('Read only the original runtime binding.');
     const row = privateJson<CliExecutionRecord>(join(this.execution(key), 'result.json'));
-    if (row.key !== key || row.binding !== this.binding || row.adapter !== this.key) throw new Error('Execution record differs from its original binding.');
+    if (row.key !== key || row.binding !== reference.value.binding || row.adapter !== this.key) throw new Error('Execution record differs from its original binding.');
     if (row.state === 'working' && (!row.observedAt || Date.now() - Date.parse(row.observedAt) > 60000))
       return { reference, state: 'unknown', text: 'The original runner is not reporting. Its execution was not restarted.' };
     return { reference, state: row.state, ...(row.text ? { text: row.text } : {}) };
@@ -124,9 +133,15 @@ export class CliRuntimeAdapter implements RuntimeAdapter {
   async close() { /* Detached original execution remains observable. */ }
 }
 
-export function cliCommand(runtime: string, _config: CliExecutionConfig, workspace: string): string[] {
+export function cliCommand(runtime: string, config: CliExecutionConfig, workspace: string): string[] {
   if (resolve(workspace) !== workspace) throw new Error('Use an absolute execution workspace.');
   if (runtime === 'codex') return ['exec','--json','--skip-git-repo-check','--cd',workspace,'-'];
+  if (runtime === 'claude-code' && config.serviceProfile) {
+    const root = config.serviceProfile.root;
+    return ['-p', '--output-format', 'stream-json', '--verbose', '--setting-sources', '',
+      '--settings', join(root, 'settings.json'), '--strict-mcp-config', '--mcp-config',
+      existsSync(join(root, 'mcp.json')) ? join(root, 'mcp.json') : '{"mcpServers":{}}', '--no-chrome'];
+  }
   if (runtime === 'claude-code') return ['-p', '--output-format', 'stream-json', '--verbose', '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--setting-sources', '', '--disable-slash-commands', '--no-chrome', '--settings', '{"disableAllHooks":true}'];
   throw new Error('Unsupported CLI runtime.');
 }

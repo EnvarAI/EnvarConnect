@@ -1,7 +1,6 @@
 /** Native agents receive scoped outgoing tools; the Connector owns incoming claims/execution. */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { setTimeout as sleep } from 'node:timers/promises';
 import type { EnvarWorkClient } from './client.js';
 import type { ConnectorJournal } from './state.js';
 
@@ -44,13 +43,8 @@ export function connectorMcp(client: EnvarWorkClient, journal: ConnectorJournal,
     server.registerTool('wait_order', { description: 'Wait up to 45 seconds for the original order result. Continue the same order when still queued/working.',
       inputSchema: z.object({ order_id: identifier, seconds: z.number().int().min(1).max(45).default(30) }), annotations: read,
     }, wrap(async (args, extra) => {
-      const deadline = Date.now() + args.seconds * 1000;
-      for (;;) {
-        if (extra.signal.aborted) throw new Error('Order wait canceled; the original order is unchanged');
-        const order = await client.order(args.order_id);
-        if (!['queued', 'dispatching', 'working'].includes(order.state) || Date.now() >= deadline) return order;
-        await sleep(1500, undefined, { signal: extra.signal });
-      }
+      return client.waitResult(() => client.order(args.order_id),
+        order => !['queued', 'dispatching', 'working'].includes(order.state), args.seconds, extra.signal);
     }));
     server.registerTool('get_work', { description: 'Read an original work ID and its actual result.',
       inputSchema: z.object({ work_id: identifier }), annotations: read,
@@ -58,13 +52,8 @@ export function connectorMcp(client: EnvarWorkClient, journal: ConnectorJournal,
     server.registerTool('wait_work', { description: 'Wait up to 45 seconds for the original result. Continue reading the same work ID when still working.',
       inputSchema: z.object({ work_id: identifier, seconds: z.number().int().min(1).max(45).default(30) }), annotations: read,
     }, wrap(async (args, extra) => {
-      const deadline = Date.now() + args.seconds * 1000;
-      for (;;) {
-        if (extra.signal.aborted) throw new Error('Result wait canceled; original work is unchanged');
-        const work = await client.get(args.work_id);
-        if (!['queued', 'dispatching', 'working'].includes(work.status) || Date.now() >= deadline) return work;
-        await sleep(1500, undefined, { signal: extra.signal });
-      }
+      return client.waitResult(() => client.get(args.work_id),
+        work => !['queued', 'dispatching', 'working'].includes(work.status), args.seconds, extra.signal);
     }));
     server.registerTool('list_results', { description: 'Read this Agent’s persisted result deliveries, including results received while disconnected.',
       inputSchema: z.object({}), annotations: read,

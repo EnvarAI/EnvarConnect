@@ -7,6 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {CliRuntimeAdapter,cliCommand} from '../dist/adapters/cli-runtime.js';
 import {privateJson} from '../dist/connector/files.js';
+import {digest} from '../dist/shared/json.js';
 
 test('CLI runner executes once and completed output survives an adapter restart',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'envar-cli-'));mkdirSync(join(dir,'workspace'));
@@ -15,8 +16,11 @@ test('CLI runner executes once and completed output survives an adapter restart'
  const config={binary,workspace:join(dir,'workspace'),timeoutSeconds:20,configurationApproved:true};
  const adapter=new CliRuntimeAdapter(dir,'codex',config),id=randomUUID(),work={id,request:{message:'do work'}};
  const first=await adapter.start(work,id);assert.equal(first.state,'working');
+ // A WebSocket notification can arrive before the child initializes its heartbeat.
+ // Reading immediately must not turn a successfully submitted operation unknown.
+ assert.ok(['working','completed'].includes((await adapter.observe(first.reference)).state));
  let value;
- for(let n=0;n<100;n++){await sleep(50);value=await adapter.observe(first.reference);if(value.state==='completed')break;}
+ for(let n=0;n<400;n++){await sleep(50);value=await adapter.observe(first.reference);if(value.state==='completed')break;}
  assert.equal(value.state,'completed');assert.equal(value.text,'actual result');
  const again=new CliRuntimeAdapter(dir,'codex',config);assert.equal((await again.start(work,id)).state,'completed');
  assert.equal(readFileSync(count,'utf8'),'run\n');
@@ -50,7 +54,19 @@ test('relay v2 projects the original CLI execution without inventing a native HT
  const result=await adapter.relay.send({message:{messageId:'public-message',parts:[{text:'original text'}]}},{workId,contextId});
  assert.equal(adapter.relay.version,'2');assert.equal(result.reference.kind,'local_cli_execution');assert.equal(result.reference.task_id,workId);
  assert.ok(!('origin'in result.reference));let snapshot;
- for(let n=0;n<100;n++){await sleep(50);try{snapshot=await adapter.relay.read(result.reference);}catch{continue;}if(snapshot.status.state==='TASK_STATE_COMPLETED')break;}
+ for(let n=0;n<400;n++){await sleep(50);try{snapshot=await adapter.relay.read(result.reference);}catch{continue;}if(snapshot.status.state==='TASK_STATE_COMPLETED')break;}
  assert.equal(snapshot.id,workId);assert.equal(snapshot.contextId,contextId);assert.equal(snapshot.artifacts[0].parts[0].text,'relay actual result');
  await assert.rejects(adapter.relay.read({...result.reference,binding_digest:'different'}));
+});
+
+test('a child that never starts becomes unknown without another launch',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'envar-cli-startup-'));mkdirSync(join(dir,'workspace'));
+ const config={binary:'/bin/false',workspace:join(dir,'workspace'),timeoutSeconds:20,configurationApproved:true};
+ const adapter=new CliRuntimeAdapter(dir,'codex',config),id=randomUUID(),work={id,request:{message:'once'}};
+ const folder=join(dir,'executions',id);mkdirSync(folder,{recursive:true,mode:0o700});
+ const old=new Date(Date.now()-61000).toISOString();
+ writeFileSync(join(folder,'intent.json'),'{}',{mode:0o600});
+ writeFileSync(join(folder,'result.json'),JSON.stringify({version:1,key:id,adapter:'codex',binding:adapter.binding,requestDigest:digest(work.request),state:'working',startedAt:old,observedAt:old}),{mode:0o600});
+ const value=await adapter.start(work,id);assert.equal(value.state,'unknown');
+ assert.equal(privateJson(join(folder,'result.json')).workerPid,undefined);
 });

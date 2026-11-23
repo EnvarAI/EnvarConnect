@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { privateJson, privateText } from './files.js';
-import { platformOrigin } from './pairing.js';
+import { platformOrigin } from './origin.js';
 import { EnvarWorkClient } from './client.js';
 import { ConnectorJournal, type ConnectorBinding } from './state.js';
 import { HermesRuntimeAdapter } from '../adapters/hermes.js';
@@ -10,7 +10,7 @@ import { CliRuntimeAdapter, type CliExecutionConfig } from '../adapters/cli-runt
 export type RuntimeKind = 'hermes' | 'openclaw' | 'codex' | 'claude-code' | 'generic-client';
 
 export interface ConnectorConfig {
-  version: 1 | 2; origin: string; agentId: string; connectionId: string; framework: RuntimeKind;
+  version: 2; origin: string; agentId: string; connectionId: string; framework: RuntimeKind;
   scopes: string[]; expiresAt: string; allowLocalHttp?: boolean; nativeConfigured: boolean; disabled?: boolean;
   runtime: { home: string; configFile?: string; port?: number; agentId: string; cardUrl: string; binary: string[]; peerName: string; mcpName: string };
   journalCardUrl?: string;
@@ -29,9 +29,9 @@ export function readConnector(directory: string): ConnectorConfig {
   normalizeConnector(config);
   return config;
 }
-/** Normalize historical files in memory; never rewrite their credential or journal identity. */
+/** Validate the current connection and preserve its original execution binding. */
 export function normalizeConnector(config: ConnectorConfig): NormalizedConnectorConfig {
-  if (![1,2].includes(config.version) || !uuid.test(config.agentId) || !uuid.test(config.connectionId) ||
+  if (config.version !== 2 || !uuid.test(config.agentId) || !uuid.test(config.connectionId) ||
     !['hermes','openclaw','codex','claude-code','generic-client'].includes(config.framework) || !Array.isArray(config.scopes) || !config.runtime?.cardUrl ||
     config.runtime.peerName !== 'envar-' + config.agentId || config.runtime.mcpName !== 'envar-' + config.agentId)
     throw new Error('Invalid Connector configuration');

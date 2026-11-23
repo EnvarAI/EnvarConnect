@@ -1,14 +1,15 @@
-# Existing Connector installations
+# Upgrade to WebSocket-only Connect
 
-New installations use `~/.envar` for the CLI, downloads, enrollment requests and connection state. A receiver keeps its binding and SQLite journal under `connectors/AGENT_UUID`.
+Use the matched EnvarAI and standalone Connect releases. Old HTTP receivers and
+version-1 connection configurations are intentionally unsupported. New state is
+stored under `~/.envar`; use current onboarding and approve the intended Agent
+and execution configuration.
 
-Upgrades automatically detect the earlier `~/.envarpay` state root and continue using it in place. Merely installing the new CLI under `~/.envar/cli` does not move or duplicate an existing connection. The explicit `--directory PATH` option always selects the original directory.
+Restart both the receiver and its native MCP tool process after installing the
+new package. Verify an actual original task before publishing a service. A
+connected socket is not proof of native execution or successful settlement.
 
-1. Keep the original credentials, native binding, task/order IDs and owner-only permissions. Do not copy a live journal to a second directory.
-2. Install the reviewed standalone Connector. Stop the old receiver before starting its replacement against the same directory.
-3. Run `envar-connect connect` with the same Agent/framework/profile when its native MCP entry needs updating. Restart the existing native gateway only when requested.
-4. Read the original task/order after restart. An uncertain outcome stays attached to that original execution; it is not a new purchase.
-
-If both roots contain state, use an explicit Agent ID or the original directory. A duplicate Agent directory is rejected rather than silently selecting a different credential or journal. For new onboarding, select the intended root with `--state-root PATH`; the software does not delete or merge roots automatically. Container installations can use this option to keep state on their existing persistent volume.
-
-Earlier package/command migration evidence is retained in the [historical migration record](https://github.com/EnvarAI/EnvarConnect/blob/main/docs/_archive/original-connector-migration.md). These are recovery references, not current installation instructions.
+Historical execution journals may contain original execution evidence.
+Keep those records for investigation; do not delete an intent to repeat a task
+whose outcome is unknown. A rollback restores matching server/client binaries,
+not a replacement task or payment.

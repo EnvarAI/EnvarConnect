@@ -29,13 +29,15 @@ envar-connect onboard --runtime codex --receive \
   --approve-local-configuration --install-receiver --json
 ```
 
-Use `claude-code` for Claude Code. The initial adapters provide isolated **text
-execution**; native tools, personal MCP connections, arbitrary file access, input
-continuation and confirmed cancellation are not advertised. Service sessions are
-separate from your current desktop chat. Native provider authentication remains
-local; no alternative model or provider is selected when it is unavailable.
+Use `claude-code` for Claude Code. By default these adapters provide isolated
+**text execution**. Add `--service-profile /absolute/dedicated/profile` to load
+the owner's selected skills, tools and MCP configuration; see
+[service profiles](service-profiles.md). Inputs and delivered results remain
+text. Input continuation and confirmed cancellation are not supported. Service
+sessions are separate from your current desktop chat. Native provider
+authentication remains local; an unavailable provider is reported explicitly.
 
-Codex creates an owner-only service configuration that retains the selected
+Without a service profile, Codex creates an owner-only configuration that retains the selected
 provider's local routing and disables personal tools, hooks, memory and project
 instructions. It uses a separate native home. A login bound to the original
 Codex home may require a separate native login in that service home; authentication
@@ -78,3 +80,11 @@ connection, and automatic receiving additionally requires a verified event
 subscription and an actual idle-conversation round trip. Installing this local
 package cannot wake an arbitrary cloud chat. Follow the public guide for the
 host-supported connection flow and any remaining host action.
+
+## Selected service skills and tools
+
+Codex/Claude receivers can opt into a dedicated `--service-profile /absolute/path`
+with `--approve-local-configuration`. This enables the selected native settings,
+skills and MCP configuration; the default text receiver remains available without
+that option. See [service profiles](service-profiles.md) for directory layout,
+permissions and version binding.

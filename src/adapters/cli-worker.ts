@@ -4,24 +4,35 @@ import { join, dirname } from 'node:path';
 import { mkdirSync, existsSync } from 'node:fs';
 import { cliCommand, type CliExecutionConfig, type CliExecutionRecord } from './cli-runtime.js';
 import { privateJson, writePrivateJson } from '../connector/files.js';
+import { materializeServiceProfile } from './service-profile.js';
 
 export async function executeCli(folder: string): Promise<void> {
   const file = join(folder, 'result.json'), row = privateJson<CliExecutionRecord>(file);
   const request = privateJson<{ config: CliExecutionConfig; runtime: string; message: string }>(join(folder, 'request.json'));
-  if (row.state !== 'unknown') throw new Error('The original runner has already started.');
-  // Each order has its own empty working directory; no personal conversational context is copied.
+  if (row.state !== 'working' || row.workerPid) throw new Error('The original runner has already started.');
+  // Each order has its own workspace; only an explicitly approved profile adds local capabilities.
   const workspace = join(request.config.workspace, 'envar-' + row.key);
   mkdirSync(workspace, { mode: 0o700 });
   let finalText = '', failure = false, terminal = false, output = '', bytes = 0, stopped = false;
   const save = () => { row.observedAt = new Date().toISOString(); writePrivateJson(file, row); };
   row.state = 'working'; row.workerPid = process.pid; save();
+  if (request.config.serviceProfile) {
+    try {
+      materializeServiceProfile(request.runtime as 'codex' | 'claude-code', request.config.serviceProfile, workspace);
+      mkdirSync(join(request.config.serviceProfile.root, 'home'), { recursive: true, mode: 0o700 });
+    }
+    catch { row.state = 'failed'; row.text = 'Service profile changed before native execution. Review its original binding.'; save(); return; }
+  }
   const envFile=join(dirname(dirname(folder)),'runtime-environment.json');
   const storedEnvironment=existsSync(envFile)?privateJson<Record<string,string>>(envFile):{};
   const runtimeEnvironment=Object.fromEntries((request.config.environmentKeys??[])
     .filter(key=>typeof storedEnvironment[key]==='string').map(key=>[key,storedEnvironment[key]]));
   const child = spawn(request.config.binary, cliCommand(request.runtime, request.config, workspace), {
     cwd: workspace, stdio: ['pipe', 'pipe', 'pipe'], detached: true,
-    env: { ...process.env, ...runtimeEnvironment, ...(request.config.codexHome ? { CODEX_HOME: request.config.codexHome } : {}) },
+    env: { ...process.env, ...runtimeEnvironment, ...(request.config.codexHome ? { CODEX_HOME: request.config.codexHome } : {}),
+      ...(request.config.serviceProfile ? { HOME: join(request.config.serviceProfile.root, 'home') } : {}),
+      ...(request.config.serviceProfile && request.runtime === 'codex' ? { CODEX_HOME: request.config.serviceProfile.root } : {}),
+      ...(request.config.serviceProfile && request.runtime === 'claude-code' ? { CLAUDE_CONFIG_DIR: request.config.serviceProfile.root } : {}) },
   });
   let hardStop: ReturnType<typeof setTimeout> | undefined;
   const stop = () => {

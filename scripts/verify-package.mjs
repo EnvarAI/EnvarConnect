@@ -17,14 +17,16 @@ const root = mkdtempSync(join(tmpdir(), 'envar-connect-package-'));
 try {
   writeFileSync(join(root, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
   execFileSync('npm', ['install', '--offline', '--cache', join(root, 'empty-cache'), '--ignore-scripts', '--no-audit', '--no-fund', tarball], { cwd: root, stdio: 'inherit' });
-  execFileSync(process.execPath, ['--input-type=module', '-e', "import {EnvarWorkClient} from '@envarai/connect'; import {NativeA2AClient} from '@envarai/connect/adapters/native-a2a'; import {runConnectorCli} from '@envarai/connect/connector/cli'; import {digest,CommerceError} from '@envarai/connect/shared'; if(!EnvarWorkClient||!NativeA2AClient||!runConnectorCli||!digest||!CommerceError)throw Error('Missing public API');"], { cwd: root, stdio: 'inherit' });
+  execFileSync(process.execPath, ['--input-type=module', '-e', "import {EnvarWorkClient} from '@envarai/connect'; import {NativeA2AClient} from '@envarai/connect/adapters/native-a2a'; import {runUnifiedCli} from '@envarai/connect/connector/unified-cli'; import {SocketTransport} from '@envarai/connect/connector/transport'; import {digest,CommerceError} from '@envarai/connect/shared'; if(!EnvarWorkClient||!NativeA2AClient||!runUnifiedCli||!SocketTransport||!digest||!CommerceError)throw Error('Missing public API');"], { cwd: root, stdio: 'inherit' });
   const cli = join(root, 'node_modules/@envarai/connect/dist/cli.js');
   assert.equal(execFileSync(process.execPath, [cli, '--version'], { encoding: 'utf8' }).trim(), pkg.version);
   const help = JSON.parse(execFileSync(process.execPath, [cli, '--help'], { encoding: 'utf8' }));
   assert.ok(help.commands.includes('onboard'));
   assert.ok(help.commands.includes('connections'));
   assert.match(help.next, /onboard --runtime auto/);
-  assert.ok(help.existing_connections.includes('run --agent UUID'));
-  assert.match(execFileSync(process.execPath, [cli, 'connector', '--help'], { encoding: 'utf8' }), /Envar Connector/);
+  assert.ok(help.commands.includes('run --agent UUID'));
+  assert.ok(!entries.includes('package/dist/connector/cli.js'));
+  assert.ok(!entries.includes('package/dist/connector/pairing.js'));
+  assert.throws(() => execFileSync(process.execPath, [cli, 'connector'], { stdio: 'pipe' }));
   console.log('Offline packed CLI and public exports verified: ' + pkg.version);
 } finally { rmSync(root, { recursive: true, force: true }); }

@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { parse as yaml } from 'yaml';
 import { configureNative, inspectNative } from '../dist/adapters/configure-native.js';
-import { pairDevice } from '../dist/connector/pairing.js';
 import { privateDirectory, privateJson } from '../dist/connector/files.js';
 
 function dirs(t) {
@@ -18,7 +17,7 @@ function dirs(t) {
 }
 function config(framework, home) {
   const agentId = randomUUID();
-  return { version: 1, origin: 'https://envar.example', agentId, connectionId: randomUUID(), framework,
+  return { version: 2, origin: 'https://envar.example', agentId, connectionId: randomUUID(), framework,
     scopes: ['connection:read','work:read','work:receive','work:report'], expiresAt: new Date().toISOString(), nativeConfigured: false,
     runtime: { home, agentId: 'main', cardUrl: `http://127.0.0.1:${framework === 'hermes' ? 9900 : 18789}/.well-known/agent-card.json`,
       binary: [framework], peerName: 'envar-' + agentId, mcpName: 'envar-' + agentId } };
@@ -61,34 +60,6 @@ test('OpenClaw setup uses native A2A peer routing and MCP without changing provi
   assert.throws(() => configureNative(directory, c), /was edited/);
   assert.equal(JSON.parse(readFileSync(join(home, 'openclaw.json'), 'utf8')).mcp.servers[c.runtime.mcpName].command, 'user-customized-tool');
 });
-test('pairing persists the device secret and replays a lost exchange without printing credentials', async t => {
-  const { directory } = dirs(t), agentId = randomUUID(), connectionId = randomUUID(), printed = [];
-  let starts = 0, exchanges = 0, lose = true;
-  const secret = 'envar_pair_' + 's'.repeat(43), token = 'envar_agent_' + 't'.repeat(64);
-  const fetch = async (url, init) => {
-    if (url.pathname.endsWith('/start')) { starts++; return Response.json({ pairing_id: randomUUID(), device_token: secret,
-      user_code: 'ABCD-EFGH', verification_uri: 'https://envar.example/connect/device?code=ABCD-EFGH', interval: 2,
-      expires_at: new Date(Date.now() + 600000).toISOString() }); }
-    assert.equal(init.headers.Authorization, 'Bearer ' + secret);
-    if (url.pathname.endsWith('/status')) return Response.json({ status: 'approved' });
-    exchanges++; if (lose) { lose = false; throw new Error('exchange response lost'); }
-    return Response.json({ version: 1, agent_id: agentId, connection_id: connectionId, framework: 'hermes',
-      platform_origin: 'https://envar.example', token, scopes: ['connection:read','work:read','work:receive','work:report'], expires_at: new Date(Date.now() + 86400000).toISOString() });
-  };
-  const options = { origin: 'https://envar.example', agentId, framework: 'hermes', runtimeVersion: '1', directory,
-    fetch, onApproval: value => printed.push(value), poll: async () => {} };
-  await assert.rejects(pairDevice(options));
-  const receipt = await pairDevice(options);
-  assert.equal(receipt.token, token); assert.equal(starts, 1); assert.equal(exchanges, 2);
-  assert.ok(!JSON.stringify(printed).includes(secret)); assert.ok(!JSON.stringify(printed).includes(token));
-  assert.equal(privateJson(join(directory, 'pairing.json')).pairing.device_token, secret);
-  assert.equal(statSync(join(directory, 'pairing.json')).mode & 0o077, 0);
-  writeFileSync(join(directory, 'journal-preserved'), 'original work');
-  await pairDevice({ ...options, fresh: true });
-  assert.equal(starts, 2); assert.equal(exchanges, 3);
-  assert.equal(readFileSync(join(directory, 'journal-preserved'), 'utf8'), 'original work');
-});
-
 test('OpenClaw canonical entries require an explicit choice when the roster is ambiguous', t => {
   const { home } = dirs(t);
   writeFileSync(join(home, 'openclaw.json'), JSON.stringify({ agents: { entries: { coder: {}, reviewer: {} } } }), { mode: 0o600 });

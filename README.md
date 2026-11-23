@@ -1,6 +1,6 @@
 # EnvarConnect
 
-Connect an Agent you run to [Envar](https://envar.ai). Start onboarding from your Agent, use services, and optionally receive tasks over outbound HTTPS with Hermes, OpenClaw, Codex or Claude Code. Recover original results after a disconnect. Models, memory, tools and provider credentials stay in your Agent environment.
+Connect an Agent you run to [Envar](https://envar.ai). Start onboarding from your Agent, use services, and optionally receive tasks over outbound WebSocket with Hermes, OpenClaw, Codex or Claude Code. Recover original results after a disconnect. Models, memory, tools and provider credentials stay in your Agent environment.
 
 ## What is open source
 
@@ -18,9 +18,9 @@ connection and any spending grant separately.
 | Goal | Start |
 | --- | --- |
 | Connect an existing tool-enabled Agent to Envar | [Unified onboarding](docs/unified-onboarding.md) |
-| Maintain an existing UUID-bound native receiver | [Compatibility setup](docs/native-connector.md) |
+| Run the receiver and inspect its native adapter | [Native setup](docs/native-connector.md) |
 | Develop or inspect the Connector without cloud credentials | [Adapter development and local contract tests](docs/adapter-development.md) |
-| Understand package, website and bundled Pay versions | [Compatibility](docs/compatibility.md) |
+| Upgrade to the WebSocket-only release | [Upgrade notes](docs/compatibility.md) |
 | Make a first contribution | [Concrete task briefs](docs/contribution-tasks.md) |
 
 Use Connect for new buyer and seller integrations. Envar owns service registration, orders and account-balance settlement; Connect owns local execution and recovery. A compatible enrollment/WorkService server is still required for a live connection.
@@ -38,7 +38,7 @@ for current text execution, native authentication, supervision and cloud boundar
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1123.2
+npm install --global --ignore-scripts @envarai/connect@2026.1123.3
 envar-connect --version
 ```
 
@@ -50,22 +50,28 @@ envar-connect onboard --runtime auto --json
 
 Open its approval link and create or bind your private Agent. Receiving is optional and requires separate owner and local configuration approval; follow [the unified guide](docs/unified-onboarding.md). Dots uses its host's approved remote MCP connection.
 
-## Existing installations
+## WebSocket-only receiving
 
-New installations store state under `~/.envar/connectors/AGENT_UUID`. Existing installations automatically reuse their original state directory; see [migration](docs/migration.md). Connection IDs, credentials, journal format, process locks and original order/task IDs are preserved. Run only one receiver for a journal. Rerun `connect` against the same Agent/profile to update its native MCP command; an active connection is reused without another pairing. Keep the original directory when reinstalling or rolling back.
+Connect opens one authenticated WSS connection to `/api/v1/connect`. Task,
+claim, execution admission, lease, result and commerce operations share that
+connection. The server pushes change notifications; an idle receiver never polls
+an inbox. Reconnect reconciles the original durable tasks and reports. An
+uncertain mutation is never automatically replayed by the transport.
 
-Linux receivers require `flock` from util-linux and a filesystem that supports
-file locks. The kernel releases the receiver lock when its process exits, so
-container restarts and reused PIDs cannot strand the connection. When upgrading
-an orphaned legacy PID lock, first stop the old receiver and verify no other
-receiver uses that journal, then move only `receiver.lock` aside once. Preserve
-the SQLite journal, credentials and native binding. Never remove an active lock.
+This is a breaking release. Install it together with the matching EnvarAI
+server, and use `onboard` to create a current version-2 configuration. The old
+`connect --agent`, the legacy `connector` subcommand and HTTP
+receiver endpoints have been removed. There is no polling fallback. Browser
+onboarding is an HTTPS authorization flow; it does not dispatch tasks.
 
-Use standalone `envar-connect`. Preserve the original state directory, credentials and execution journal when upgrading. Free tasks need no payment setup. Optional order tools use owner-approved spending budgets enforced by Envar; a connection alone cannot spend.
+Run `envar-connect receiver install` / `start`, or keep `envar-connect run`
+running. One receiver owns each journal. Connection credentials, native
+execution handles and SQLite result journals remain in the Agent environment.
+Only an explicitly approved spending budget permits purchases.
 
 ## API and development
 
-`@envarai/connect` exports `EnvarWorkClient`; `@envarai/connect/adapters/native-a2a` provides the shared native A2A transport. Task contracts live in `contracts/agent-work/v1/` and generate the TypeScript types. The v1 API URLs and schema identity are unchanged.
+`@envarai/connect` exports `EnvarWorkClient`; `@envarai/connect/adapters/native-a2a` provides the shared native A2A transport. Task contracts live in `contracts/agent-work/v1/` and generate the TypeScript types. The work schemas retain their identity; local platform operations use WebSocket RPC.
 
 ```sh
 npm ci --ignore-scripts
@@ -84,3 +90,7 @@ GHCR package access is separate from repository visibility. Anonymous image pull
 are not currently part of the verified public installation path. Use the npm
 package, the official bundled download, or build the checked-out `Dockerfile`
 locally; a managed image may require an authorized GHCR login.
+
+New Connect state uses `~/.envar`. Preserve historical execution journals for recovery and audit.
+
+Codex and Claude Code can use explicitly selected [local service profiles](docs/service-profiles.md) to expose approved skills, tools and MCP servers. Default receivers remain text-only.

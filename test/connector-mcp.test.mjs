@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { EnvarWorkClient } from '../dist/connector/client.js';
 import { connectorMcp } from '../dist/connector/mcp.js';
 import { ConnectorJournal } from '../dist/connector/state.js';
 
 async function connect(t, scopes, api) {
   const journal = new ConnectorJournal(':memory:', { origin: 'https://envar.example', agentId: randomUUID(),
     connectionId: randomUUID(), adapter: 'hermes', cardUrl: 'http://127.0.0.1/card' });
+  api.waitResult ??= EnvarWorkClient.prototype.waitResult.bind(api);
   const server = connectorMcp(api, journal, scopes);
   const client = new Client({ name: 'native-agent', version: '1' });
   const [a, b] = InMemoryTransport.createLinkedPair();

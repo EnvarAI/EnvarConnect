@@ -1,4 +1,6 @@
-/** Outbound HTTPS application client. Tokens never leave the selected Envar origin. */
+/** Scoped application operations over the sole Connect WebSocket transport. */
+import { SocketTransport } from './transport.js';
+export { WorkApiError } from './transport.js';
 import { readFileSync } from 'node:fs';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormatsImport from 'ajv-formats';
@@ -22,11 +24,6 @@ export function validate<T>(kind: string, value: unknown): T {
   if (!validator || !validator(value)) throw new Error(`Invalid Agent Work ${kind} document`);
   return value as T;
 }
-export class WorkApiError extends Error {
-  constructor(public readonly status: number, public readonly code: string, public readonly retryAfter = 0) {
-    super(`Envar request failed (${status}, ${code}). Read the original work before retrying.`);
-  }
-}
 export interface ClaimedWork extends Work {
   claim?: Claim & { lease_until: string | null };
   execution_ref: Partial<ExecutionRef>;
@@ -44,196 +41,170 @@ export interface ConnectionStatus {
 }
 export class EnvarWorkClient {
   readonly origin: string;
-  private readonly token: string;
-  private readonly fetchImpl: typeof fetch;
-  constructor(origin: string, token: string, options: { fetch?: typeof fetch; allowLocalHttp?: boolean } = {}) {
+  readonly transport: SocketTransport;
+  private readonly invoke: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+  constructor(origin: string, token: string, options: { rpc?: (method: string, params: Record<string, unknown>) => Promise<unknown>; allowLocalHttp?: boolean } = {}) {
     const url = new URL(origin);
     const local = options.allowLocalHttp && url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
     if ((!local && url.protocol !== 'https:') || url.username || url.password || url.pathname !== '/' || url.search || url.hash)
       throw new Error('Choose the Envar HTTPS origin');
     if (!/^envar_agent_[A-Za-z0-9_-]{32,128}$/.test(token)) throw new Error('Use a scoped Envar connection credential');
-    this.origin = url.origin; this.token = token; this.fetchImpl = options.fetch ?? fetch;
+    this.origin = url.origin;
+    this.transport = new SocketTransport(this.origin, token);
+    this.invoke = options.rpc ?? ((method, params) => this.transport.call(method, params));
   }
-  private async request(path: string, body?: unknown, key?: string, method?: 'DELETE', maximum = 262144): Promise<unknown> {
-    if (!path.startsWith('/api/v1/')) throw new Error('Invalid application route');
-    const headers = new Headers({ Authorization: `Bearer ${this.token}`, Accept: 'application/json' });
-    if (key) headers.set('Idempotency-Key', id(key));
-    const encoded = body === undefined ? undefined : JSON.stringify(body);
-    if (encoded && Buffer.byteLength(encoded) > maximum) throw new Error('Work request exceeds the size limit');
-    if (encoded) headers.set('Content-Type', 'application/json');
-    const response = await this.fetchImpl(new URL(path, this.origin), {
-      method: method ?? (body === undefined ? 'GET' : 'POST'), body: encoded, headers, redirect: 'error', signal: AbortSignal.timeout(20000),
-    });
-    // One attempt only. The durable Connector decides which original operation can be retried.
-    if (!response.ok) {
-      const retry = Number(response.headers.get('Retry-After'));
-      throw new WorkApiError(response.status, `http_${response.status}`, Number.isFinite(retry) ? Math.min(300, Math.max(0, retry)) : 0);
-    }
-    if (!response.body) throw new Error('Envar returned an empty response');
-    const reader = response.body.getReader(), chunks: Uint8Array[] = []; let bytes = 0;
+  private rpc(method: string, params: Record<string, unknown> = {}) { return this.invoke(method, params); }
+  close() { this.transport.close(); }
+  get generation() { return this.transport.generation; }
+  subscribeReceiver() { return this.transport.subscribeReceiver(); }
+  waitForChange(after: number, signal?: AbortSignal, milliseconds?: number) { return this.transport.wait(after, signal, milliseconds); }
+  async waitResult<T>(read: () => Promise<T>, terminal: (value: T) => boolean, seconds: number, signal?: AbortSignal): Promise<T> {
+    const deadline = Date.now() + seconds * 1000;
     for (;;) {
-      const part = await reader.read(); if (part.done) break;
-      bytes += part.value.byteLength;
-      if (bytes > 4 * 1024 * 1024) { await reader.cancel(); throw new Error('Envar response exceeds the size limit'); }
-      chunks.push(part.value);
+      if (signal?.aborted) throw new Error('Wait canceled; the original task is unchanged');
+      const after = this.generation, value = await read();
+      if (terminal(value) || Date.now() >= deadline) return value;
+      await this.waitForChange(after, signal, deadline - Date.now());
     }
-    try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-    catch { throw new Error('Envar returned invalid JSON. Preserve the original request ID.'); }
   }
   async disconnect(): Promise<{ credential_revoked: boolean; connection_revoked: boolean }> {
-    return await this.request('/api/v1/agent-connections/current/credential', {}, undefined, 'DELETE') as { credential_revoked: boolean; connection_revoked: boolean };
+    return await this.rpc('disconnect') as { credential_revoked: boolean; connection_revoked: boolean };
   }
   async checkOnboarding(sessionId: string, start = false): Promise<Record<string, unknown>> {
-    return await this.request(start ? '/api/v1/onboarding/checks' : `/api/v1/onboarding/checks/${id(sessionId)}`,
-      start ? {} : undefined) as Record<string, unknown>;
+    return await this.rpc(start ? 'start_check' : 'get_check', start ? {} : { session_id: id(sessionId) }) as Record<string, unknown>;
   }
+
   async relayHello(cardDigest: string, version: '1'|'2' = '1'): Promise<boolean> {
-    // Older product routers can return 403 for an unknown protocol route.
-    // Negotiate through the existing authenticated connection endpoint first;
-    // never reinterpret a real handshake authorization failure as support.
-    const support = (await this.status()).protocol_support;
-    if ((version === '2' ? support?.a2a_relay_v2 : support?.a2a_relay_v1) !== true) return false;
-    try {
-      const value = await this.request('/api/v1/connector/a2a-relay/hello', {
-        relay_version: version, a2a_wire_version: '1.0', runtime_card_digest: cardDigest,
-        capabilities: { get: true, input: false, cancel: false, artifacts: false, streaming: false,
-          task_lookup_after_restart: false, execution_key_lookup: false }, max_concurrency: 1,
-      }) as { relay_version?: string };
-      if (value.relay_version !== version) throw new Error('Unsupported relay handshake');
-      return true;
-    } catch (error) {
-      if (error instanceof WorkApiError && [404, 405, 409].includes(error.status)) return false;
-      throw error;
-    }
+    const value = await this.rpc('relay_hello', {
+      relay_version: version, a2a_wire_version: '1.0', runtime_card_digest: cardDigest,
+      capabilities: { get: true, input: false, cancel: false, artifacts: false, streaming: false,
+        task_lookup_after_restart: false, execution_key_lookup: false }, max_concurrency: 1,
+    }) as { relay_version?: string };
+    if (value.relay_version !== version) throw new Error('Unsupported relay handshake');
+    return true;
   }
   async relayCommands(): Promise<RelayCommand[]> {
-    const result = await this.request('/api/v1/connector/a2a-relay/commands?limit=1') as { items: unknown[] };
-    if (!Array.isArray(result?.items) || result.items.length > 1) throw new Error('Invalid relay command page');
+    const result = await this.rpc('list_relay_commands') as { items: unknown[] };
+    if (!Array.isArray(result?.items) || result.items.length > 20) throw new Error('Invalid relay command page');
     return result.items.map(relayCommand);
   }
   async relayCommand(commandId: string): Promise<RelayCommand> {
-    const result = relayCommand(await this.request(`/api/v1/connector/a2a-relay/commands/${id(commandId)}`));
+    const result = relayCommand(await this.rpc('get_relay_command', { command_id: id(commandId) }));
     if (result.command_id !== commandId) throw new Error('Envar returned another original relay command');
     return result;
   }
   async relayOperation(commandId: string, operation: 'claim' | 'admit' | 'lease' | 'recover', body: unknown): Promise<RelayCommand> {
-    const result = relayCommand(await this.request(`/api/v1/connector/a2a-relay/commands/${id(commandId)}/${operation}`, body));
+    const result = relayCommand(await this.rpc('relay_' + operation, { command_id: id(commandId), body }));
     if (result.command_id !== commandId) throw new Error('Envar returned another original relay command');
     return result;
   }
   async relayEvent(commandId: string, event: RelayEvent): Promise<{ result_digest: string; state: string }> {
-    const result = await this.request(`/api/v1/connector/a2a-relay/commands/${id(commandId)}/events`, event, undefined, undefined, 5243904) as { event_id: string; last_committed_sequence: number; result_digest: string; state: string };
+    const result = await this.rpc('relay_events', { command_id: id(commandId), body: event }) as { event_id: string; last_committed_sequence: number; result_digest: string; state: string };
     if (result.event_id !== event.event_id || result.last_committed_sequence < event.sequence) throw new Error('Relay did not persist the original event');
     return result;
   }
   async relayAck(commandId: string, body: unknown): Promise<void> {
-    const result = await this.request(`/api/v1/connector/a2a-relay/commands/${id(commandId)}/ack`, body) as { command_id: string; acknowledged: boolean };
+    const result = await this.rpc('relay_ack', { command_id: id(commandId), body }) as { command_id: string; acknowledged: boolean };
     if (result.command_id !== commandId || result.acknowledged !== true) throw new Error('Relay did not acknowledge the original result');
   }
   async status(): Promise<ConnectionStatus> {
-    const value = await this.request('/api/v1/agent-connections/current') as ConnectionStatus;
+    const value = await this.rpc('get_connection') as ConnectionStatus;
     if (!value || !uuid.test(value.id) || !uuid.test(value.agent_id) || value.mode !== 'inbox' || value.status !== 'active')
       throw new Error('Reconnect this Agent to an active inbox');
     return value;
   }
-  async reportRuntime(runtime: RuntimeReadiness): Promise<'accepted' | 'unsupported' | 'unavailable'> {
-    const report = runtimeReport(runtime);
-    try {
-      await this.request('/api/v1/agent-connections/current/runtime', report);
-      return 'accepted';
-    } catch (error) {
-      if (error instanceof WorkApiError && [401, 403].includes(error.status)) throw error;
-      if (error instanceof WorkApiError && [404, 405].includes(error.status)) return 'unsupported';
-      // Optional diagnostics must not block recovery of an already admitted task.
-      return 'unavailable';
-    }
+  async reportRuntime(runtime: RuntimeReadiness): Promise<'accepted'> {
+    await this.rpc('report_runtime', runtimeReport(runtime));
+    return 'accepted';
   }
   async peers(): Promise<{ items: { agent_id: string; connection_id: string; display_name: string; platform: string }[] }> {
-    const value = await this.request('/api/v1/agent-connections/peers') as { items: { agent_id: string; connection_id: string; display_name: string; platform: string }[] };
+    const value = await this.rpc('list_peers') as { items: { agent_id: string; connection_id: string; display_name: string; platform: string }[] };
     if (!value || !Array.isArray(value.items) || value.items.length > 100 || value.items.some(item =>
       !uuid.test(item.agent_id) || !uuid.test(item.connection_id) || typeof item.display_name !== 'string'))
       throw new Error('Invalid allowed-peer directory');
     return value;
   }
   async provideInput(workId: string, text: string, requestId: string): Promise<Work> {
-    return validate('work', await this.request(`/api/v1/invocations/${id(workId)}/input`, validate('input', { text }), requestId));
+    return validate('work', await this.rpc('provide_input', { work_id: id(workId), text, request_id: id(requestId) }));
   }
   async cancel(workId: string, requestId: string): Promise<Work> {
-    return validate('work', await this.request(`/api/v1/invocations/${id(workId)}/cancel`, {}, requestId));
+    return validate('work', await this.rpc('cancel_work', { work_id: id(workId), request_id: id(requestId) }));
   }
   async inbox(after = 0): Promise<Inbox> {
     if (!Number.isSafeInteger(after) || after < 0) throw new Error('Invalid inbox cursor');
-    return validate('inbox', await this.request(`/api/v1/inbox?after=${after}`));
+    return validate('inbox', await this.rpc('list_inbox', { after }));
   }
-  async get(workId: string): Promise<Work> { return validate('work', await this.request(`/api/v1/invocations/${id(workId)}`)); }
+  async get(workId: string): Promise<Work> { return validate('work', await this.rpc('get_work', { work_id: id(workId) })); }
   async send(request: Submit, requestId: string): Promise<Work> {
     validate('submit', request);
-    return validate('work', await this.request('/api/v1/invocations', request, requestId));
+    const { replayed: _, ...work } = await this.rpc('send_message', { ...request, request_id: id(requestId) }) as Record<string, unknown>;
+    return validate('work', work);
   }
-  private async claimed(path: string, body: unknown, requestId?: string): Promise<ClaimedWork> {
-    const result = await this.request(path, body, requestId) as ClaimedWork;
+  private async claimed(method: string, params: Record<string, unknown>): Promise<ClaimedWork> {
+    const result = await this.rpc(method, params) as ClaimedWork;
     const { claim, execution_ref, replayed, ...work } = result;
     validate('work', work);
-    if (path.endsWith('/claim') && ['completed', 'failed', 'canceled'].includes(work.status) && !uuid.test(claim?.id ?? ''))
+    if (method === 'claim_work' && ['completed', 'failed', 'canceled'].includes(work.status) && !uuid.test(claim?.id ?? ''))
       return { ...work, execution_ref, ...(replayed === undefined ? {} : { replayed }) };
     if (!claim) throw new Error('The active original work has no claim');
     validate('claim', { id: claim.id, fence: claim.fence });
     return { ...work, claim, execution_ref, ...(replayed === undefined ? {} : { replayed }) };
   }
   claim(workId: string, requestId: string): Promise<ClaimedWork> {
-    return this.claimed(`/api/v1/invocations/${id(workId)}/claim`, {}, requestId);
+    return this.claimed('claim_work', { work_id: id(workId), request_id: id(requestId) });
   }
   start(workId: string, claim: Claim, execution_ref: ExecutionRef): Promise<ClaimedWork> {
-    return this.claimed(`/api/v1/invocations/${id(workId)}/start`, validate('start', { claim, execution_ref }));
+    return this.claimed('start_work', { work_id: id(workId), claim, execution_ref });
   }
   renew(workId: string, claim: Claim): Promise<ClaimedWork> {
-    return this.claimed(`/api/v1/invocations/${id(workId)}/lease`, validate('lease', { claim }));
+    return this.claimed('renew_work', { work_id: id(workId), claim });
   }
   recover(workId: string, claim: Claim, execution_ref: ExecutionRef): Promise<ClaimedWork> {
-    return this.claimed(`/api/v1/invocations/${id(workId)}/recover`, validate('recover', { claim, execution_ref }));
+    return this.claimed('recover_work', { work_id: id(workId), claim, execution_ref });
   }
   async report(workId: string, report: Report): Promise<Work> {
-    return validate('work', await this.request(`/api/v1/invocations/${id(workId)}/work-events`, validate('report', report)));
+    validate('report', report);
+    const methods = { progress: 'report_progress', input_required: 'request_input', completed: 'complete_work', failed: 'fail_work', outcome_unknown: 'mark_outcome_unknown', cancel_confirmed: 'confirm_cancellation' };
+    const { kind, ...params } = report;
+    return validate('work', await this.rpc(methods[kind], { work_id: id(workId), ...params }));
   }
   async acknowledge(deliveryId: number): Promise<void> {
     if (!Number.isSafeInteger(deliveryId) || deliveryId < 1) throw new Error('Invalid delivery ID');
-    await this.request(`/api/v1/inbox/${deliveryId}/ack`, {});
+    await this.rpc('acknowledge_result', { delivery_id: deliveryId });
   }
   async services(query = '', serviceId?: string): Promise<{ results: Record<string, unknown>[] }> {
     if (query.length > 120) throw new Error('Use a bounded service query');
-    const params = new URLSearchParams({ q: query });
-    if (serviceId) params.set('service', id(serviceId));
-    const value = await this.request('/api/v1/agent-commerce/services?' + params) as { results: Record<string, unknown>[] };
+    const value = await this.rpc('list_services', { query, ...(serviceId ? { service_id: id(serviceId) } : {}) }) as { results: Record<string, unknown>[] };
     if (!Array.isArray(value?.results) || value.results.length > 100) throw new Error('Invalid service directory');
     return value;
   }
   async spendingGrants(): Promise<{ items: Record<string, unknown>[] }> {
-    const value = await this.request('/api/v1/agent-commerce/spending-grants') as { items: Record<string, unknown>[] };
+    const value = await this.rpc('list_spending_grants') as { items: Record<string, unknown>[] };
     if (!Array.isArray(value?.items) || value.items.length > 100) throw new Error('Invalid Agent budget response');
     return value;
   }
   async quoteService(request: ServiceQuoteRequest): Promise<Order> {
     validate('service_quote_request', request);
-    const order = validate<Order>('order', await this.request('/api/v1/agent-commerce/quotes', request, request.message_id));
+    const { message_id, ...terms } = request;
+    const order = validate<Order>('order', await this.rpc('quote_service', { ...terms, request_id: id(message_id) }));
     if (order.service_id !== request.service_id || order.message_id !== request.message_id || order.offer_id !== request.offer_id ||
       order.payment_method !== request.payment_method || order.quote.input_digest !== digest(request.input))
       throw new Error('The service quote differs from the original request');
     return order;
   }
   async order(orderId: string): Promise<Order> {
-    const order = validate<Order>('order', await this.request(`/api/v1/agent-commerce/orders/${id(orderId)}`));
+    const order = validate<Order>('order', await this.rpc('get_order', { order_id: id(orderId) }));
     if (order.id !== orderId) throw new Error('Envar returned a different original order');
     return order;
   }
   async orders(): Promise<{ items: Order[] }> {
-    const value = await this.request('/api/v1/agent-commerce/orders') as { items: unknown[] };
+    const value = await this.rpc('list_orders') as { items: unknown[] };
     if (!Array.isArray(value?.items) || value.items.length > 100) throw new Error('Invalid original-order list');
     return { items: value.items.map(item => validate<Order>('order', item)) };
   }
   async confirmOrder(orderId: string, confirmation: ServiceConfirmation): Promise<ConfirmOrderResult> {
     validate('service_confirmation', confirmation);
-    const receipt = validate<ConfirmOrderResult>('confirm_order_result', await this.request(
-      `/api/v1/agent-commerce/orders/${id(orderId)}/confirm`, confirmation, orderId));
+    const receipt = validate<ConfirmOrderResult>('confirm_order_result', await this.rpc('confirm_order', { order_id: id(orderId), ...confirmation }));
     if (receipt.order.id !== orderId || receipt.order.message_id !== confirmation.message_id)
       throw new Error('Confirmation returned another order');
     if (receipt.approval_required) {
@@ -245,7 +216,7 @@ export class EnvarWorkClient {
     return receipt;
   }
   async recoverOrder(orderId: string): Promise<Order> {
-    const order = validate<Order>('order', await this.request(`/api/v1/agent-commerce/orders/${id(orderId)}/recover`, {}, orderId));
+    const order = validate<Order>('order', await this.rpc('recover_order', { order_id: id(orderId) }));
     if (order.id !== orderId) throw new Error('Recovery returned another order');
     return order;
   }

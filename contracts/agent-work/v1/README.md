@@ -1,19 +1,19 @@
 # Agent Work v1
 
-Canonical JSON Schema for inbox work shared by REST, the MCP facade, and the local Connector. Domain authorization and state transitions belong to `WorkService`; transport adapters do not own tasks or balances. Direct A2A/MCP requests retain their protocol-specific inputs.
+Canonical JSON Schema for inbox work shared by the application, MCP and WebSocket Connect. Domain authorization and state transitions belong to `WorkService`; transport adapters do not own tasks or balances. Direct A2A/MCP requests retain their protocol-specific inputs.
 
 - Owner creates `/api/v1/agents/{id}/connections` with `mode: inbox` or `mode: direct` and a verified `endpoint_id`.
 - Owner manages credentials and explicit free-work peer grants under `/api/v1/agent-connections/{id}`. The retired generic `/connections` API remains absent.
 - Receiver credential uses `connection:read`, `work:receive`, `work:report`, `work:read`. `work:send` is a separate optional permission. None alone grants account management, publication or balance spending. Paid orders additionally require a separately created owner spending grant or the owner's confirmation of that original quote.
 - `POST /api/v1/invocations` uses `submit`, a UUID `Idempotency-Key`, and returns `work` (202 new / 200 replay). Reusing a key with changed content conflicts.
 - A task canceled before its first claim has a terminal status and no execution authority (`claim.id` is null, fence 0). Check terminal status before using claim fields. Never fabricate a claim to restart canceled work.
-- `GET /api/v1/inbox?after=<integer>` returns `inbox`. Pagination cursors only traverse a page; restart each poll from 0 to recover unacknowledged deliveries. Persist a delivery before acknowledging it. Work cannot be acknowledged before its terminal state.
-- `POST /invocations/{id}/claim` uses an empty body and UUID `Idempotency-Key`. It returns the work plus `{claim: {id, fence, lease_until}, execution_ref}`. Persist the request ID before sending. Later mutations send only `claim.id` and `claim.fence`.
-- `/start`, `/lease`, `/recover`, `/work-events`, `/input`, `/cancel` use their respective schema definitions (`report` for work-events, `empty` for cancel). The API prefix is always `/api/v1`.
+- `list_inbox` over WSS returns `inbox`. Read after server change notifications and on reconnect, starting pagination at 0 to recover unacknowledged deliveries. Persist a delivery before acknowledging it. Work cannot be acknowledged before its terminal state.
+- `claim_work` over WSS uses `work_id` and a persisted UUID `request_id`. It returns the work plus `{claim: {id, fence, lease_until}, execution_ref}`. Persist the request ID before sending. Later mutations send only `claim.id` and `claim.fence`.
+- `start_work`, `renew_work`, `recover_work`, result-report operations, `provide_input` and `cancel_work` use their respective schema definitions. Local Connect sends these named JSON-RPC operations on `/api/v1/connect`, subprotocol `envar.connect.v1`. The retired HTTP receiver endpoints are absent.
 - Claim lasts 120 seconds. Renew every 30 seconds while executing. Start records the original execution key; a network failure after admission must recover that same execution, never launch a replacement. An expired unstarted claim may transfer with a higher fence. A started task never transfers.
 - Each report has a caller-persisted UUID `event_id`. Identical replay succeeds; changed content conflicts. A terminal result is immutable. Recovering an expired execution requires its original connection, claim, fence, and execution reference before reporting.
 - Input is appended to the original task. Cancellation is a request until the executor confirms it, except work that has not started can be canceled immediately. Neither operation creates another paid order.
-- Results and control messages are committed with their events and can be acknowledged with `POST /inbox/{id}/ack`. `input_required` and `unknown` are observations, not successful completion.
+- Results and control messages are committed with their events and can be acknowledged with `acknowledge_result` over WSS. `input_required` and `unknown` are observations, not successful completion.
 - Text is bounded to 32,000 UTF-8 bytes by the service (the schema also bounds characters). Tasks must start within 24 hours. A receiving Agent accepts at most 100 active tasks; a sending account accepts at most 20 active inbox submissions.
 
 ## Original service orders

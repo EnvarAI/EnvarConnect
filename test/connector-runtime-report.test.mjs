@@ -15,27 +15,21 @@ test('legacy recover capability never implies durable native execution or result
   assert.equal(runtimeReport({ ...runtime(), runtimeVersion: 'untrusted\nconfiguration' }).runtime_version, 'unknown');
 });
 
-test('diagnostics use only the authenticated original platform origin', async () => {
+test('runtime diagnostics use the scoped RPC and retain demonstrated capabilities', async () => {
   const calls = [];
-  const client = new EnvarWorkClient('https://envar.example', token, { fetch: async (url, init) => {
-    calls.push({ url, init }); return Response.json({});
+  const client = new EnvarWorkClient('https://envar.example', token, { rpc: async (method, params) => {
+    calls.push({ method, params }); return {};
   } });
   assert.equal(await client.reportRuntime(runtime()), 'accepted');
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].url.href, 'https://envar.example/api/v1/agent-connections/current/runtime');
-  assert.equal(calls[0].init.headers.get('Authorization'), 'Bearer ' + token);
-  assert.equal(calls[0].init.redirect, 'error');
-  assert.deepEqual(JSON.parse(calls[0].init.body), runtimeReport(runtime()));
+  assert.deepEqual(calls, [{ method: 'report_runtime', params: runtimeReport(runtime()) }]);
 });
-
 for (const status of [404, 405, 429, 500, 401, 403]) {
-  test(`runtime reporting handles HTTP ${status} without hiding revoked authority or retrying`, async () => {
+  test(`runtime reporting rejects ${status} without a compatibility fallback or retry`, async () => {
     let calls = 0;
-    const client = new EnvarWorkClient('https://envar.example', token, { fetch: async () => {
-      calls++; return Response.json({ private: 'never log this' }, { status });
+    const client = new EnvarWorkClient('https://envar.example', token, { rpc: async () => {
+      calls++; throw new WorkApiError(status, 'rpc_rejected');
     } });
-    if ([401, 403].includes(status)) await assert.rejects(client.reportRuntime(runtime()), WorkApiError);
-    else assert.equal(await client.reportRuntime(runtime()), [404, 405].includes(status) ? 'unsupported' : 'unavailable');
+    await assert.rejects(client.reportRuntime(runtime()), WorkApiError);
     assert.equal(calls, 1);
   });
 }

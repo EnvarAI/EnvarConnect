@@ -9,7 +9,7 @@ Start with the existing interfaces, rather than inventing another task protocol:
 | `src/adapters/native-a2a.ts` | Native Card and endpoint validation, SendMessage/GetTask transport |
 | `src/connector/loop.ts`, `relay-loop.ts` | Protocol claims, admission, pending receipts and original-task recovery |
 | `src/connector/execution-lifecycle.ts` | Shared heartbeat and durable one-dispatch barrier |
-| `src/connector/config.ts` | In-memory client/native/CLI normalization of existing v1/v2 files |
+| `src/connector/config.ts` | Current client/native/CLI configuration validation |
 | `src/connector/state.ts` | Durable journal and original runtime binding |
 | `contracts/agent-work/v1/schema.json` | Public work/report contract |
 
