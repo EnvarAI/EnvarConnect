@@ -5,10 +5,10 @@ import { existsSync } from 'node:fs';
 import { digest } from '../shared/json.js';
 import { privateDirectory, privateText, writePrivate } from '../connector/files.js';
 
-export async function readCodexRouting(binary: string, profile?: string): Promise<Record<string, unknown>> {
+export async function readCodexConfiguration(binary: string, profile?: string, home?: string): Promise<Record<string, any>> {
   if(profile)throw new Error('Named Codex profile inspection is unavailable in this version. Use the existing default model configuration or configure a dedicated service installation.');
   return new Promise((resolve,reject)=>{
-    const child = spawn(binary,['app-server'],{stdio:['pipe','pipe','ignore']});
+    const child = spawn(binary,['app-server'],{stdio:['pipe','pipe','ignore'],env:{...process.env,...(home?{CODEX_HOME:home}:{})}});
     let buffer='',bytes=0,done=false;
     const finish=(error?:Error,value?:Record<string,unknown>)=>{if(done)return;done=true;clearTimeout(timer);child.kill();error?reject(error):resolve(value!);};
     const timer=setTimeout(()=>finish(new Error('Cannot inspect the existing Codex model configuration.')),20000);
@@ -25,15 +25,26 @@ export async function readCodexRouting(binary: string, profile?: string): Promis
         if(event.id===2){
           const c=event.result?.config;
           if(!c||typeof c.model_provider!=='string'){finish(new Error('Cannot identify the selected Codex provider.'));return;}
-          const keep:Record<string,unknown>={};
-          for(const k of ['model','model_provider','model_reasoning_effort','service_tier','openai_base_url','forced_chatgpt_workspace_id','forced_login_method'])if(c[k]!=null)keep[k]=c[k];
-          const provider=c.model_providers?.[c.model_provider];if(provider)keep.model_providers={[c.model_provider]:provider};
-          finish(undefined,keep);
+          finish(undefined,c);
         }
       }
     });
   });
 }
+export async function readCodexRouting(binary:string, profile?:string):Promise<Record<string,unknown>> {
+  const c=await readCodexConfiguration(binary,profile),keep:Record<string,unknown>={};
+  for(const k of ['model','model_provider','model_reasoning_effort','service_tier','openai_base_url','forced_chatgpt_workspace_id','forced_login_method'])if(c[k]!=null)keep[k]=c[k];
+  const provider=c.model_providers?.[c.model_provider];if(provider)keep.model_providers={[c.model_provider]:provider};
+  return keep;
+}
+export function codexEnvironmentKeys(config:Record<string,any>):string[] {
+  const provider=config.model_providers?.[config.model_provider];
+  const mcp=Object.values(config.mcp_servers??{}) as Record<string,any>[];
+  return [...new Set([provider?.env_key,...Object.values(provider?.env_http_headers??{}),
+    ...mcp.flatMap(server=>[...(server.env_vars??[]),server.bearer_token_env_var])]
+    .filter((key):key is string=>typeof key==='string'&&/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)))];
+}
+
 function toml(value:unknown):string {
   if(typeof value==='string')return JSON.stringify(value);
   if(typeof value==='number'||typeof value==='boolean')return String(value);

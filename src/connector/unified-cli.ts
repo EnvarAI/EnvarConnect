@@ -33,7 +33,7 @@ function requestFile(file?: string): any {
 export async function runUnifiedCli(args: string[]): Promise<void> {
   const commandPrefix = ['envar-connect'];
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
-    runtime:{type:'string'}, origin:{type:'string'}, receive:{type:'boolean'}, workspace:{type:'string'}, profile:{type:'string'},
+    'service-profile':{type:'string'}, runtime:{type:'string'}, origin:{type:'string'}, receive:{type:'boolean'}, workspace:{type:'string'}, profile:{type:'string'},
     home:{type:'string'}, 'native-agent':{type:'string'}, 'allow-local-http':{type:'boolean'}, json:{type:'boolean'},
     'approve-local-configuration':{type:'boolean'}, 'install-receiver':{type:'boolean'}, directory:{type:'string'}, agent:{type:'string'},
     'new-pairing':{type:'boolean'}, file:{type:'string'}, query:{type:'string'}, help:{type:'boolean',short:'h'},
@@ -48,14 +48,14 @@ export async function runUnifiedCli(args: string[]): Promise<void> {
         throw new Error('This native MCP process belongs to an earlier connection. Reload its configuration.');
       cached = { directory, config, client: connectorClient(directory, config) };
     }
-    if (receiving && !cached.config.nativeConfigured) throw new Error('Finish connector connect before starting it');
+    if (receiving && !cached.config.nativeConfigured) throw new Error('Finish onboarding before starting the receiver');
     return cached;
   };
   const commands: Record<string, { usage: string; run: () => Promise<void> }> = {
     onboard: { usage:'onboard', run: async () => {
       const runtime = (!values.runtime || values.runtime === 'auto' ? detectRuntime() : values.runtime) as RuntimeKind;
       const result = await onboard({ origin: values.origin ?? 'https://envar.ai', runtime, receive: values.receive ?? false,
-        home: values.home, nativeAgent: values['native-agent'], workspace: values.workspace, profile: values.profile,
+        home: values.home, nativeAgent: values['native-agent'], workspace: values.workspace, profile: values.profile, serviceProfile: values['service-profile'],
         allowLocalHttp: values['allow-local-http'], configurationApproved: values['approve-local-configuration'], fresh: values['new-pairing'], output: print });
       const client = connectorClient(result.directory, result.config);
       if (result.restartRequired) {

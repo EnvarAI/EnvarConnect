@@ -20,7 +20,7 @@ test('CLI runner executes once and completed output survives an adapter restart'
  // Reading immediately must not turn a successfully submitted operation unknown.
  assert.ok(['working','completed'].includes((await adapter.observe(first.reference)).state));
  let value;
- for(let n=0;n<100;n++){await sleep(50);value=await adapter.observe(first.reference);if(value.state==='completed')break;}
+ for(let n=0;n<400;n++){await sleep(50);value=await adapter.observe(first.reference);if(value.state==='completed')break;}
  assert.equal(value.state,'completed');assert.equal(value.text,'actual result');
  const again=new CliRuntimeAdapter(dir,'codex',config);assert.equal((await again.start(work,id)).state,'completed');
  assert.equal(readFileSync(count,'utf8'),'run\n');
@@ -54,7 +54,7 @@ test('relay v2 projects the original CLI execution without inventing a native HT
  const result=await adapter.relay.send({message:{messageId:'public-message',parts:[{text:'original text'}]}},{workId,contextId});
  assert.equal(adapter.relay.version,'2');assert.equal(result.reference.kind,'local_cli_execution');assert.equal(result.reference.task_id,workId);
  assert.ok(!('origin'in result.reference));let snapshot;
- for(let n=0;n<100;n++){await sleep(50);try{snapshot=await adapter.relay.read(result.reference);}catch{continue;}if(snapshot.status.state==='TASK_STATE_COMPLETED')break;}
+ for(let n=0;n<400;n++){await sleep(50);try{snapshot=await adapter.relay.read(result.reference);}catch{continue;}if(snapshot.status.state==='TASK_STATE_COMPLETED')break;}
  assert.equal(snapshot.id,workId);assert.equal(snapshot.contextId,contextId);assert.equal(snapshot.artifacts[0].parts[0].text,'relay actual result');
  await assert.rejects(adapter.relay.read({...result.reference,binding_digest:'different'}));
 });

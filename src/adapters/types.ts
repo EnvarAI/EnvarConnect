@@ -25,6 +25,7 @@ export interface RuntimeReadiness {
   maxConcurrency?: number;
   versionSource?: 'agent_card' | 'cli_version';
   receiverSupervised?: boolean;
+  executionProfile?: { mode: 'service-profile'; digest: string; skillCount: number };
 }
 export interface RuntimeObservation {
   reference: RuntimeReference;

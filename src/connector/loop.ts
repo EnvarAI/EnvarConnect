@@ -94,6 +94,8 @@ export class ConnectorLoop {
         if (terminal.has(current.status)) { record.phase = 'terminal'; this.journal.save(record); return; }
         await this.lease(record, true);
       }
+      // Recheck local execution configuration before admitting/capturing this work.
+      await this.runtime.probe();
       let admitted;
       try { admitted = await this.client.start(record.work.id, claimValue(record), { key: record.work.id }); }
       catch (error) {

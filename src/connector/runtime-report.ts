@@ -15,6 +15,8 @@ export function runtimeReport(runtime: RuntimeReadiness) {
     adapter: runtime.adapter,
     runtime_version: version(runtime.runtimeVersion),
     version_source: runtime.versionSource ?? 'agent_card',
+    ...(runtime.executionProfile ? { execution_profile: { mode: runtime.executionProfile.mode,
+      digest: runtime.executionProfile.digest, skill_count: runtime.executionProfile.skillCount } } : {}),
     capabilities: {
       task_lookup: runtime.capabilities.recover,
       task_lookup_after_restart: runtime.recovery?.taskLookupAfterRestart ?? false,

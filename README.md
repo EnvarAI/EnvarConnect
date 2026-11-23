@@ -93,3 +93,5 @@ package, the official bundled download, or build the checked-out `Dockerfile`
 locally; a managed image may require an authorized GHCR login.
 
 EnvarPay is retired from new integrations. Its repository, releases and historical seller journals remain available for audit. New Connect state uses `~/.envar`; historical journals should not be deleted merely to retry an uncertain task.
+
+Codex and Claude Code can use explicitly selected [local service profiles](docs/service-profiles.md) to expose approved skills, tools and MCP servers. Default receivers remain text-only.
