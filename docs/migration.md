@@ -1,10 +1,14 @@
-# Moving from EnvarPay Connector
+# Existing Connector installations
 
-EnvarConnect is extracted from the MIT EnvarPay Connector at `2a9e03ebfd0beb9a167ad57473ead56ec5dd9bf5`. It retains the v1 protocol and SQLite journal layout.
+New installations use `~/.envar` for the CLI, downloads, enrollment requests and connection state. A receiver keeps its binding and SQLite journal under `connectors/AGENT_UUID`.
 
-1. Keep the original state directory and its owner-only permissions. Stop the old receiver before starting the new one; do not remove its journal or binding files.
-2. Install the reviewed `@envarai/connect` version. `envar-connect run --agent ID` reads the existing `~/.envarpay/connectors/ID` binding. A custom installation uses the original `--directory PATH`.
-3. Run `envar-connect connect` with the same Agent/framework/profile to update the native MCP entry. It preserves the active connection and native peer credential. Restart the existing native gateway when requested, then start one receiver.
-4. Read the original task/order after restart. Reuse persisted request IDs; never buy again to recover a delayed result.
+Upgrades automatically detect the earlier `~/.envarpay` state root and continue using it in place. Merely installing the new CLI under `~/.envar/cli` does not move or duplicate an existing connection. The explicit `--directory PATH` option always selects the original directory.
 
-Rollback uses the prior EnvarPay package against the same state directory, after stopping the new receiver. Both implementations understand the same journal. Rerun its original connect command if its native MCP command needs restoring. Connection permissions and spending grants are unchanged.
+1. Keep the original credentials, native binding, task/order IDs and owner-only permissions. Do not copy a live journal to a second directory.
+2. Install the reviewed standalone Connector. Stop the old receiver before starting its replacement against the same directory.
+3. Run `envar-connect connect` with the same Agent/framework/profile when its native MCP entry needs updating. Restart the existing native gateway only when requested.
+4. Read the original task/order after restart. An uncertain outcome stays attached to that original execution; it is not a new purchase.
+
+If both roots contain state, use an explicit Agent ID or the original directory. A duplicate Agent directory is rejected rather than silently selecting a different credential or journal. For new onboarding, select the intended root with `--state-root PATH`; the software does not delete or merge roots automatically. Container installations can use this option to keep state on their existing persistent volume.
+
+Earlier package/command migration evidence is retained in the [historical migration record](https://github.com/EnvarAI/EnvarConnect/blob/main/docs/_archive/original-connector-migration.md). These are recovery references, not current installation instructions.

@@ -1,6 +1,6 @@
 # Stable releases
 
-Versions use `YEAR.MONTHDAY.SEQUENCE` in Asia/Shanghai, matching EnvarPay. Run `npm run version:date` when package or image contents change; commit package.json, package-lock.json and the updated current install examples together. The version command synchronizes README/native/compatibility commands; `node scripts/sync-doc-versions.mjs --check` is also covered by `npm test`.
+Versions use `YEAR.MONTHDAY.SEQUENCE` in Asia/Shanghai. Run `npm run version:date` when package or image contents change; commit package.json, package-lock.json and the updated current install examples together. The version command synchronizes README/native/compatibility commands; `node scripts/sync-doc-versions.mjs --check` is also covered by `npm test`.
 
 Pushes to main that change runtime/package/container files run `publish-npm.yml`. The workflow tests Node 22 and 24, packs once per Node version, installs the actual tarball offline with an empty cache, and builds/runs containers on amd64 and arm64. After those checks it publishes `ghcr.io/envarai/connect:VERSION`, verifies its source/version labels, publishes the tested Node 24 tarball to npm with provenance, verifies version and integrity, updates image latest, and attaches the tarball to GitHub release `vVERSION`.
 

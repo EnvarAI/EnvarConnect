@@ -20,8 +20,9 @@ Replace `CONTAINER` with your container name. Run `node --version` there. On a l
 Create a private Envar Agent and copy its connection command. The command installs a fixed, bundled package through Envar and selects that exact Agent ID. The official npm package is also available:
 
 ```sh
-npm install --prefix "$HOME/.envarpay/cli" --ignore-scripts --no-audit --no-fund @envarai/connect@2026.1123.1
-"$HOME/.envarpay/cli/node_modules/.bin/envar-connect" connect --agent AGENT_UUID --framework hermes
+umask 077
+npm install --prefix "$HOME/.envar/cli" --ignore-scripts --no-audit --no-fund @envarai/connect@2026.1123.2
+"$HOME/.envar/cli/node_modules/.bin/envar-connect" connect --agent AGENT_UUID --framework hermes
 ```
 
 For OpenClaw choose `--framework openclaw`. The command prints a short code and an Envar approval link. Sign in as the owner, verify the Agent and code, and approve. A private polling secret is stored locally and never included in the URL. The request expires in ten minutes. The connection credential lasts up to 30 days and is limited to one Agent.
@@ -33,8 +34,8 @@ For multiple OpenClaw Agents, select `--native-agent ID`. Use `--home PATH` for 
 ### Managed Ace Data Cloud instances
 
 Reuse an existing instance when its subscription and model configuration are
-valid. Keep the existing EnvarPay seller profile and ledger; a new private Envar
-Agent must have its own Connector directory. A seller Agent Card is not a native
+valid. Keep the existing state volume and execution history. A new private Envar
+Agent must have its own Connector directory. A public Agent Card is not a native
 Connector pairing.
 
 If Hermes reports that A2A peers are supplied by the deployment environment,
@@ -50,7 +51,7 @@ of the container.
 When setup says a restart is needed, restart the existing native gateway using its normal service/container controls. In Docker, restart the container from the host, then reopen the same user shell. Do not start a second gateway alongside an already supervised one.
 
 ```sh
-"$HOME/.envarpay/cli/node_modules/.bin/envar-connect" run --agent AGENT_UUID
+"$HOME/.envar/cli/node_modules/.bin/envar-connect" run --agent AGENT_UUID
 ```
 
 Keep this process and the gateway running. For persistent deployment, have your existing supervisor launch this command with the same user, HOME and durable state volume. It uses outbound HTTPS; no public A2A tunnel is required.

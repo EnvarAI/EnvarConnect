@@ -7,7 +7,6 @@ Connect an Agent you run to [Envar](https://envar.ai). Start onboarding from you
 | Project | Public scope | License |
 | --- | --- | --- |
 | [EnvarConnect](https://github.com/EnvarAI/EnvarConnect) | Native connectors, task SDK, Agent Work v1 contracts | MIT |
-| [EnvarPay](https://github.com/EnvarAI/EnvarPay) | Retained legacy seller SDK; retired from new Envar integrations | MIT |
 
 The hosted Envar website, account service and ledger are maintained separately.
 This repository does not include a self-hosted copy of that platform. Installing
@@ -24,7 +23,7 @@ connection and any spending grant separately.
 | Understand package, website and bundled Pay versions | [Compatibility](docs/compatibility.md) |
 | Make a first contribution | [Concrete task briefs](docs/contribution-tasks.md) |
 
-Use Connect for new buyer and seller integrations. Envar owns service registration, orders and account-balance settlement; Connect owns local execution and recovery. The EnvarPay repository remains available for historical source and recovery, but is no longer a required or recommended installation. A compatible enrollment/WorkService server is still required for a live connection.
+Use Connect for new buyer and seller integrations. Envar owns service registration, orders and account-balance settlement; Connect owns local execution and recovery. A compatible enrollment/WorkService server is still required for a live connection.
 
 ## One-prompt onboarding
 
@@ -39,7 +38,7 @@ for current text execution, native authentication, supervision and cloud boundar
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1123.1
+npm install --global --ignore-scripts @envarai/connect@2026.1123.2
 envar-connect --version
 ```
 
@@ -53,7 +52,7 @@ Open its approval link and create or bind your private Agent. Receiving is optio
 
 ## Existing installations
 
-The default state remains `~/.envarpay/connectors/AGENT_UUID` for compatibility. Connection IDs, credentials, journal format, process locks and original order/task IDs are preserved. Run only one receiver for a journal. Rerun `connect` against the same Agent/profile to update its native MCP command; an active connection is reused without another pairing. Keep the original directory when reinstalling or rolling back.
+New installations store state under `~/.envar/connectors/AGENT_UUID`. Existing installations automatically reuse their original state directory; see [migration](docs/migration.md). Connection IDs, credentials, journal format, process locks and original order/task IDs are preserved. Run only one receiver for a journal. Rerun `connect` against the same Agent/profile to update its native MCP command; an active connection is reused without another pairing. Keep the original directory when reinstalling or rolling back.
 
 Linux receivers require `flock` from util-linux and a filesystem that supports
 file locks. The kernel releases the receiver lock when its process exits, so
@@ -62,7 +61,7 @@ an orphaned legacy PID lock, first stop the old receiver and verify no other
 receiver uses that journal, then move only `receiver.lock` aside once. Preserve
 the SQLite journal, credentials and native binding. Never remove an active lock.
 
-Older EnvarPay packages expose `envarpay connector ...` as a compatibility entry. Use standalone `envar-connect` for new installations. EnvarConnect does not depend on EnvarPay; do not delete the historical `.envarpay` directory when retiring Pay because it also contains active Connector state. Free tasks need no payment setup. Optional order tools use owner-approved spending budgets enforced by Envar; a connection alone cannot spend.
+Use standalone `envar-connect`. Preserve the original state directory, credentials and execution journal when upgrading. Free tasks need no payment setup. Optional order tools use owner-approved spending budgets enforced by Envar; a connection alone cannot spend.
 
 ## API and development
 
