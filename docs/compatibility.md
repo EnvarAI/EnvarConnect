@@ -3,7 +3,7 @@
 Install the release documented by this checkout:
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1123.1
+npm install --global --ignore-scripts @envarai/connect@2026.1123.2
 envar-connect --version
 ```
 
@@ -17,17 +17,16 @@ commands. Historical migration examples keep their original versions.
 | --- | --- | --- |
 | Standalone Connector | This package's package.json / npm release | Upgrade the package, preserve the original directory, and restart its receiver and native MCP process as instructed. |
 | Envar's browser-generated command | The deployed server/web release's fixed package and SHA-512 manifest | The website may deliberately pin a reviewed version. It is not automatically npm latest. |
-| Legacy `envarpay connector` | The Connect dependency bundled in that installed Pay package | Updating standalone Connect does not replace the version inside Pay. Use standalone Connect for a new native connection. |
 | Agent Work protocol | [v1 schema](../contracts/agent-work/v1/schema.json) | Package calendar versions do not change the protocol version. Incompatible changes require a new protocol version. |
 | Native runtime | The existing Hermes/OpenClaw installation | Installing Connect does not upgrade the runtime, change its model, or grant tool permissions. |
 
-Keep only one receiver for a journal. The website and Pay dependency should be
+Keep only one receiver for a journal. The website and other consumers should be
 promoted only after that consumer's contract and installation checks pass.
 A newer package release alone does not establish that an existing receiver was
 upgraded or that every supported runtime was retested.
 
 Current and compatibility CLI entrypoints use one command registry. Existing
-`connect`, `run`, `doctor`, `status`, `disconnect`, `mcp` and `envarpay connector`
+`connect`, `run`, `doctor`, `status`, `disconnect` and `mcp`
 calls retain their installed command prefix. Configuration versions 1 and 2 are
 normalized in memory; no upgrade rewrites the original journal binding or moves
 credentials. Work v1 and negotiated relay retain their own receipts and recovery
@@ -66,7 +65,3 @@ fields to reuse another connection's task or spending authority.
 
 Read [native setup](native-connector.md), [migration](migration.md), and
 [adapter development](adapter-development.md) before changing an installation.
-
-## EnvarPay retirement
-
-EnvarPay is no longer part of new Envar integrations. Its repository, published versions and historical seller journals are retained. Use standalone Connect for local receiving and Envar for service registration and settlement. The `.envarpay` state directory remains supported; removing it would also remove active Connector credentials and execution journals. Migrate the original runtime binding without creating replacement executions.

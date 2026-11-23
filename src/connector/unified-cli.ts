@@ -1,10 +1,11 @@
 import { parseArgs } from 'node:util';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { onboard } from './onboarding.js';
+import { connectorAgentIds } from './paths.js';
 import { connectorClient, connectorDirectory, connectorJournal, readConnector, runtimeAdapter, type ConnectorConfig, type RuntimeKind } from './config.js';
 import { pairDevice, platformOrigin } from './pairing.js';
 import { inspectNative, configureNative } from '../adapters/configure-native.js';
@@ -38,7 +39,7 @@ export async function runUnifiedCli(args: string[], commandPrefix: readonly stri
     runtime:{type:'string'}, origin:{type:'string'}, receive:{type:'boolean'}, workspace:{type:'string'}, profile:{type:'string'},
     home:{type:'string'}, 'native-agent':{type:'string'}, 'allow-local-http':{type:'boolean'}, json:{type:'boolean'},
     'approve-local-configuration':{type:'boolean'}, 'install-receiver':{type:'boolean'}, directory:{type:'string'}, agent:{type:'string'},
-    'new-pairing':{type:'boolean'}, file:{type:'string'}, query:{type:'string'}, help:{type:'boolean',short:'h'},
+    'new-pairing':{type:'boolean'}, 'state-root':{type:'string'}, file:{type:'string'}, query:{type:'string'}, help:{type:'boolean',short:'h'},
     framework:{type:'string'}, 'runtime-url':{type:'string'}, connection:{type:'string'},
   } });
   const [command,operation,target] = positionals;
@@ -57,7 +58,7 @@ export async function runUnifiedCli(args: string[], commandPrefix: readonly stri
     onboard: { usage:'onboard', run: async () => {
       const runtime = (!values.runtime || values.runtime === 'auto' ? detectRuntime() : values.runtime) as RuntimeKind;
       const result = await onboard({ origin: values.origin ?? 'https://envar.ai', runtime, receive: values.receive ?? false,
-        home: values.home, nativeAgent: values['native-agent'], workspace: values.workspace, profile: values.profile,
+        stateRoot: values['state-root'] ? resolve(values['state-root']) : undefined, home: values.home, nativeAgent: values['native-agent'], workspace: values.workspace, profile: values.profile,
         allowLocalHttp: values['allow-local-http'], configurationApproved: values['approve-local-configuration'], fresh: values['new-pairing'], output: print });
       const client = connectorClient(result.directory, result.config);
       if (result.restartRequired) {
@@ -73,14 +74,14 @@ export async function runUnifiedCli(args: string[], commandPrefix: readonly stri
         print(await client.checkOnboarding(result.config.onboardingSession!, true)); return;
       }
       await runtimeAdapter(result.directory,result.config).probe();
-      print({ status:'connected', agent_id:result.config.agentId, supervisor,
-        next:supervisor ? 'Checking the original receiver task.' : `Keep ${commandPrefix.join(' ')} run --agent ${result.config.agentId} running; then run envar-connect check.` });
+      print({ status:'connected', agent_id:result.config.agentId, directory:result.directory, supervisor,
+        run:[...commandPrefix,'run','--directory',result.directory],
+        next:supervisor ? 'Checking the original receiver task.' : 'Keep the receiver running against its original directory; then check that connection.' });
       if (result.testApproved) print(await client.checkOnboarding(result.config.onboardingSession!,true));
       if (supervisor && result.testApproved) await waitCheck(result.directory);
     } },
     connections: { usage:'connections', run: async () => {
-      const root=join(homedir(),'.envarpay','connectors');
-      print({ agents:existsSync(root)?readdirSync(root).filter(id=>/^[0-9a-f-]{36}$/.test(id)):[] });
+      print({ agents: connectorAgentIds() });
     } },
     services: { usage:'services list', run: async () => {
       if (operation !== 'list') throw new Error('Use services list.');
