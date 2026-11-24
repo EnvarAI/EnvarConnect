@@ -542,6 +542,9 @@
         },
         "last_error": {
           "type": "string"
+        },
+        "task_status": {
+          "type": "string"
         }
       },
       "required": [
@@ -560,7 +563,8 @@
         "result",
         "task",
         "input",
-        "last_error"
+        "last_error",
+        "task_status"
       ],
       "additionalProperties": true,
       "not": {

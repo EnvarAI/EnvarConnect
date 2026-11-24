@@ -1,6 +1,6 @@
 // Generated from the canonical Envar Agent Task v2 JSON Schema. Do not edit.
 // Source: EnvarAI/EnvarConnect contracts/agent-task/v2/schema.json
-export const TASK_SCHEMA_SHA256 = 'ea8e4c0526cfdeca0161c684c3f46e70a6753d1b3e425c36bf681438f6e7e27d';
+export const TASK_SCHEMA_SHA256 = '9e728ec33959ea08df305540cce0c1a515f2869951fddccf68b49cb5afd5929b';
 
 export type Claim = {
   "id": string;
@@ -124,6 +124,7 @@ export type Order = {
   "task": Record<string, unknown>;
   "input": Record<string, unknown> | null;
   "last_error": string;
+  "task_status": string;
 };
 
 export type ConfirmOrderResult = {
