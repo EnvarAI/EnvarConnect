@@ -545,6 +545,12 @@
         },
         "task_status": {
           "type": "string"
+        },
+        "close_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

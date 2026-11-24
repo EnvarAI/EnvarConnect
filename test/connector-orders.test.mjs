@@ -9,7 +9,7 @@ function fixture() {
   const request = { payment_method: 'envar_balance', service_id: randomUUID(), offer_id: 'once', input: { text: 'Original task' }, message_id: randomUUID() };
   const order = { id: randomUUID(), message_id: request.message_id, service_id: request.service_id, offer_id: 'once',
     seller_agent_id: randomUUID(), buyer_agent_id: randomUUID(), task_id: null, spending_grant_id: null,
-    payment_method: 'envar_balance', state: 'quoted', payment_state: 'quoted', task_status: 'not_started', input: request.input,
+    payment_method: 'envar_balance', state: 'quoted', close_reason: null, payment_state: 'quoted', task_status: 'not_started', input: request.input,
     result: {}, task: {}, last_error: '', quote: { quote_token: 'original-quote', quote_id: randomUUID(), task_id: randomUUID(), amount: '1000',
       currency: 'usd', recipient: 'envar', expires_at: new Date(Date.now() + 600000).toISOString(), terms_digest: 'a'.repeat(64), input_digest: digest(request.input) } };
   return { request, order };
