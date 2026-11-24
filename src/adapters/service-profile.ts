@@ -1,6 +1,6 @@
 /** Explicit, local service configuration. Only its fingerprint reaches Envar. */
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative } from 'node:path';
 import { digest } from '../shared/json.js';
@@ -11,6 +11,7 @@ export interface ServiceProfile {
   skillCount: number;
   environmentKeys: string[];
 }
+export const CLAUDE_SERVICE_PLUGIN = 'envar-service';
 const configuration = ['config.toml', 'settings.json', 'mcp.json', 'AGENTS.md', 'CLAUDE.md'];
 
 function files(root: string, runtime: 'codex' | 'claude-code') {
@@ -63,6 +64,9 @@ export function verifyServiceProfile(runtime: 'codex' | 'claude-code', profile: 
 
 export function materializeServiceProfile(runtime: 'codex' | 'claude-code', profile: ServiceProfile, workspace: string) {
   verifyServiceProfile(runtime, profile);
+  const claudePlugin = join(workspace, '.claude');
+  if (runtime === 'claude-code' && existsSync(claudePlugin))
+    throw new Error('The Claude service workspace already contains configuration outside the selected profile');
   // Only approved skills, tool scripts and project instructions enter this job.
   // Native login/configuration stays in the dedicated profile, not in Envar.
   for (const name of files(profile.root, runtime)) {
@@ -72,5 +76,10 @@ export function materializeServiceProfile(runtime: 'codex' | 'claude-code', prof
     else continue;
     mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
     copyFileSync(join(profile.root, name), destination);
+  }
+  if (runtime === 'claude-code' && profile.skillCount) {
+    const manifest = join(claudePlugin, '.claude-plugin', 'plugin.json');
+    mkdirSync(dirname(manifest), { recursive: true, mode: 0o700 });
+    writeFileSync(manifest, JSON.stringify({ name: CLAUDE_SERVICE_PLUGIN, version: '1.0.0' }) + '\n', { flag: 'wx', mode: 0o600 });
   }
 }

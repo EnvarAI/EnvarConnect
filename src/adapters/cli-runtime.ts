@@ -139,7 +139,8 @@ export function cliCommand(runtime: string, config: CliExecutionConfig, workspac
     const root = config.serviceProfile.root;
     return ['-p', '--output-format', 'stream-json', '--verbose', '--setting-sources', '',
       '--settings', join(root, 'settings.json'), '--strict-mcp-config', '--mcp-config',
-      existsSync(join(root, 'mcp.json')) ? join(root, 'mcp.json') : '{"mcpServers":{}}', '--no-chrome'];
+      existsSync(join(root, 'mcp.json')) ? join(root, 'mcp.json') : '{"mcpServers":{}}',
+      ...(config.serviceProfile.skillCount ? ['--plugin-dir', join(workspace, '.claude')] : []), '--no-chrome'];
   }
   if (runtime === 'claude-code') return ['-p', '--output-format', 'stream-json', '--verbose', '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--setting-sources', '', '--disable-slash-commands', '--no-chrome', '--settings', '{"disableAllHooks":true}'];
   throw new Error('Unsupported CLI runtime.');

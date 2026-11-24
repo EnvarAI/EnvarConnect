@@ -38,7 +38,7 @@ for current text execution, native authentication, supervision and cloud boundar
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1125.1
+npm install --global --ignore-scripts @envarai/connect@2026.1125.2
 envar-connect --version
 ```
 
@@ -96,3 +96,4 @@ locally; a managed image may require an authorized GHCR login.
 New Connect state uses `~/.envar`. Preserve historical execution journals for recovery and audit.
 
 Codex and Claude Code can use explicitly selected [local service profiles](docs/service-profiles.md) to expose approved skills, tools and MCP servers. Default receivers remain text-only.
+Claude Code loads selected service skills as `envar-service:<skill-name>` from a private per-task plugin. The receiver keeps user, project and local settings sources disabled; see the service-profile guide for the skill name and isolation boundary.
