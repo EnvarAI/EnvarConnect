@@ -580,6 +580,38 @@
             "required": [
               "work_id"
             ]
+          },
+          {
+            "properties": {
+              "continuation_input": {}
+            },
+            "required": [
+              "continuation_input"
+            ]
+          },
+          {
+            "properties": {
+              "continuation_count": {}
+            },
+            "required": [
+              "continuation_count"
+            ]
+          },
+          {
+            "properties": {
+              "continuation_state": {}
+            },
+            "required": [
+              "continuation_state"
+            ]
+          },
+          {
+            "properties": {
+              "pending_continuation": {}
+            },
+            "required": [
+              "pending_continuation"
+            ]
           }
         ]
       }

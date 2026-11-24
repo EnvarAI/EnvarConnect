@@ -29,6 +29,7 @@ test('v2 order rejects retired execution-state projection', () => {
   const { order } = fixture();
   assert.equal(validate('order', order), order);
   assert.throws(() => validate('order', { ...order, execution_state: 'completed' }), /Invalid Agent Task/);
+  assert.throws(() => validate('order', { ...order, continuation_count: 0 }), /Invalid Agent Task/);
 });
 test('confirmation cannot supply replacement money terms or send approval to another site', async () => {
   const { order } = fixture(); let calls = 0, foreign = false;

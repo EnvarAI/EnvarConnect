@@ -1,6 +1,6 @@
 // Generated from the canonical Envar Agent Task v2 JSON Schema. Do not edit.
 // Source: EnvarAI/EnvarConnect contracts/agent-task/v2/schema.json
-export const TASK_SCHEMA_SHA256 = '971ed5a90cbd59201294b9cd1141e72376847dbdd3537d960e5671ca00f94118';
+export const TASK_SCHEMA_SHA256 = 'ea8e4c0526cfdeca0161c684c3f46e70a6753d1b3e425c36bf681438f6e7e27d';
 
 export type Claim = {
   "id": string;
