@@ -1,12 +1,12 @@
 /** Runtime boundary: the Connector owns delivery; the user/vendor owns execution. */
-import type { Work } from '../connector/contracts.generated.js';
+import type { Task } from '../connector/contracts.generated.js';
 import type { RelayReference } from '../connector/relay-types.js';
 
 export interface RelayRuntime {
   version?: '1' | '2';
   cardDigest(): Promise<string>;
-  prepareSend?(params: Record<string, unknown>, execution?: { workId: string; contextId: string }): Promise<() => ReturnType<RelayRuntime['send']>>;
-  send(params: Record<string, unknown>, execution?: { workId: string; contextId: string }): Promise<{ task?: Record<string, unknown>; message?: Record<string, unknown>; reference?: RelayReference }>;
+  prepareSend?(params: Record<string, unknown>, execution?: { taskId: string; contextId: string }): Promise<() => ReturnType<RelayRuntime['send']>>;
+  send(params: Record<string, unknown>, execution?: { taskId: string; contextId: string }): Promise<{ task?: Record<string, unknown>; message?: Record<string, unknown>; reference?: RelayReference }>;
   read(reference: RelayReference): Promise<Record<string, unknown>>;
 }
 
@@ -38,7 +38,7 @@ export interface RuntimeAdapter {
   readonly relay?: RelayRuntime;
   probe(): Promise<RuntimeReadiness>;
   /** Called once after durable local preparation and Envar admission. Never retries an unknown POST. */
-  start(work: Work, executionKey: string): Promise<RuntimeObservation>;
+  start(task: Task, executionKey: string): Promise<RuntimeObservation>;
   /** Observes only the original validated reference, without creating another execution. */
   observe(reference: RuntimeReference): Promise<RuntimeObservation>;
   provideInput(reference: RuntimeReference, operationId: string, text: string): Promise<RuntimeObservation>;

@@ -1,10 +1,10 @@
 /** Scoped application operations over the sole Connect WebSocket transport. */
 import { SocketTransport } from './transport.js';
-export { WorkApiError } from './transport.js';
+export { TaskApiError } from './transport.js';
 import { readFileSync } from 'node:fs';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormatsImport from 'ajv-formats';
-import type { Claim, ConfirmOrderResult, ExecutionRef, Inbox, Order, Report, ServiceConfirmation, ServiceQuoteRequest, Submit, Work } from './contracts.generated.js';
+import type { Claim, ConfirmOrderResult, ExecutionRef, Inbox, Order, Report, ServiceConfirmation, ServiceQuoteRequest, Submit, Task } from './contracts.generated.js';
 import { digest } from '../shared/json.js';
 import type { RuntimeReadiness } from '../adapters/types.js';
 import { runtimeReport } from './runtime-report.js';
@@ -12,7 +12,7 @@ import { relayCommand, type RelayCommand, type RelayEvent } from './relay-types.
 
 const ajv = new Ajv2020({ allErrors: false, strict: true });
 (addFormatsImport as unknown as (value: Ajv2020) => void)(ajv);
-const schema = JSON.parse(readFileSync(new URL('../../contracts/agent-work/v1/schema.json', import.meta.url), 'utf8'));
+const schema = JSON.parse(readFileSync(new URL('../../contracts/agent-task/v2/schema.json', import.meta.url), 'utf8'));
 ajv.addSchema(schema);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function id(value: string): string {
@@ -21,10 +21,10 @@ function id(value: string): string {
 }
 export function validate<T>(kind: string, value: unknown): T {
   const validator = ajv.getSchema(`${schema.$id}#/$defs/${kind}`);
-  if (!validator || !validator(value)) throw new Error(`Invalid Agent Work ${kind} document`);
+  if (!validator || !validator(value)) throw new Error(`Invalid Agent Task ${kind} document`);
   return value as T;
 }
-export interface ClaimedWork extends Work {
+export interface ClaimedTask extends Task {
   claim?: Claim & { lease_until: string | null };
   execution_ref: Partial<ExecutionRef>;
   replayed?: boolean;
@@ -34,12 +34,12 @@ export interface ConnectionStatus {
   agent_id: string;
   mode: 'inbox' | 'direct';
   status: 'active' | 'revoked';
-  platform: string;
+  adapter: string;
   revision: number;
   readiness: Record<string, unknown>;
   protocol_support?: { a2a_relay_v1?: boolean; a2a_relay_v2?: boolean };
 }
-export class EnvarWorkClient {
+export class EnvarTaskClient {
   readonly origin: string;
   readonly transport: SocketTransport;
   private readonly invoke: (method: string, params: Record<string, unknown>) => Promise<unknown>;
@@ -109,7 +109,7 @@ export class EnvarWorkClient {
   }
   async status(): Promise<ConnectionStatus> {
     const value = await this.rpc('get_connection') as ConnectionStatus;
-    if (!value || !uuid.test(value.id) || !uuid.test(value.agent_id) || value.mode !== 'inbox' || value.status !== 'active')
+    if (!value || !uuid.test(value.id) || !uuid.test(value.agent_id) || value.mode !== 'inbox' || value.status !== 'active' || typeof value.adapter !== 'string')
       throw new Error('Reconnect this Agent to an active inbox');
     return value;
   }
@@ -117,56 +117,56 @@ export class EnvarWorkClient {
     await this.rpc('report_runtime', runtimeReport(runtime));
     return 'accepted';
   }
-  async peers(): Promise<{ items: { agent_id: string; connection_id: string; display_name: string; platform: string }[] }> {
-    const value = await this.rpc('list_peers') as { items: { agent_id: string; connection_id: string; display_name: string; platform: string }[] };
+  async peers(): Promise<{ items: { agent_id: string; connection_id: string; display_name: string; adapter: string }[] }> {
+    const value = await this.rpc('list_peers') as { items: { agent_id: string; connection_id: string; display_name: string; adapter: string }[] };
     if (!value || !Array.isArray(value.items) || value.items.length > 100 || value.items.some(item =>
-      !uuid.test(item.agent_id) || !uuid.test(item.connection_id) || typeof item.display_name !== 'string'))
+      !uuid.test(item.agent_id) || !uuid.test(item.connection_id) || typeof item.display_name !== 'string' || typeof item.adapter !== 'string'))
       throw new Error('Invalid allowed-peer directory');
     return value;
   }
-  async provideInput(workId: string, text: string, requestId: string): Promise<Work> {
-    return validate('work', await this.rpc('provide_input', { work_id: id(workId), text, request_id: id(requestId) }));
+  async provideInput(taskId: string, text: string, requestId: string): Promise<Task> {
+    return validate('task', await this.rpc('provide_input', { task_id: id(taskId), text, request_id: id(requestId) }));
   }
-  async cancel(workId: string, requestId: string): Promise<Work> {
-    return validate('work', await this.rpc('cancel_work', { work_id: id(workId), request_id: id(requestId) }));
+  async cancel(taskId: string, requestId: string): Promise<Task> {
+    return validate('task', await this.rpc('cancel_task', { task_id: id(taskId), request_id: id(requestId) }));
   }
   async inbox(after = 0): Promise<Inbox> {
     if (!Number.isSafeInteger(after) || after < 0) throw new Error('Invalid inbox cursor');
     return validate('inbox', await this.rpc('list_inbox', { after }));
   }
-  async get(workId: string): Promise<Work> { return validate('work', await this.rpc('get_work', { work_id: id(workId) })); }
-  async send(request: Submit, requestId: string): Promise<Work> {
+  async get(taskId: string): Promise<Task> { return validate('task', await this.rpc('get_task', { task_id: id(taskId) })); }
+  async send(request: Submit, requestId: string): Promise<Task> {
     validate('submit', request);
-    const { replayed: _, ...work } = await this.rpc('send_message', { ...request, request_id: id(requestId) }) as Record<string, unknown>;
-    return validate('work', work);
+    const { replayed: _, ...task } = await this.rpc('send_message', { ...request, request_id: id(requestId) }) as Record<string, unknown>;
+    return validate('task', task);
   }
-  private async claimed(method: string, params: Record<string, unknown>): Promise<ClaimedWork> {
-    const result = await this.rpc(method, params) as ClaimedWork;
-    const { claim, execution_ref, replayed, ...work } = result;
-    validate('work', work);
-    if (method === 'claim_work' && ['completed', 'failed', 'canceled'].includes(work.status) && !uuid.test(claim?.id ?? ''))
-      return { ...work, execution_ref, ...(replayed === undefined ? {} : { replayed }) };
-    if (!claim) throw new Error('The active original work has no claim');
+  private async claimed(method: string, params: Record<string, unknown>): Promise<ClaimedTask> {
+    const result = await this.rpc(method, params) as ClaimedTask;
+    const { claim, execution_ref, replayed, ...task } = result;
+    validate('task', task);
+    if (method === 'claim_task' && ['completed', 'failed', 'canceled'].includes(task.status) && !uuid.test(claim?.id ?? ''))
+      return { ...task, execution_ref, ...(replayed === undefined ? {} : { replayed }) };
+    if (!claim) throw new Error('The active original task has no claim');
     validate('claim', { id: claim.id, fence: claim.fence });
-    return { ...work, claim, execution_ref, ...(replayed === undefined ? {} : { replayed }) };
+    return { ...task, claim, execution_ref, ...(replayed === undefined ? {} : { replayed }) };
   }
-  claim(workId: string, requestId: string): Promise<ClaimedWork> {
-    return this.claimed('claim_work', { work_id: id(workId), request_id: id(requestId) });
+  claim(taskId: string, requestId: string): Promise<ClaimedTask> {
+    return this.claimed('claim_task', { task_id: id(taskId), request_id: id(requestId) });
   }
-  start(workId: string, claim: Claim, execution_ref: ExecutionRef): Promise<ClaimedWork> {
-    return this.claimed('start_work', { work_id: id(workId), claim, execution_ref });
+  start(taskId: string, claim: Claim, execution_ref: ExecutionRef): Promise<ClaimedTask> {
+    return this.claimed('start_task', { task_id: id(taskId), claim, execution_ref });
   }
-  renew(workId: string, claim: Claim): Promise<ClaimedWork> {
-    return this.claimed('renew_work', { work_id: id(workId), claim });
+  renew(taskId: string, claim: Claim): Promise<ClaimedTask> {
+    return this.claimed('renew_task', { task_id: id(taskId), claim });
   }
-  recover(workId: string, claim: Claim, execution_ref: ExecutionRef): Promise<ClaimedWork> {
-    return this.claimed('recover_work', { work_id: id(workId), claim, execution_ref });
+  recover(taskId: string, claim: Claim, execution_ref: ExecutionRef): Promise<ClaimedTask> {
+    return this.claimed('recover_task', { task_id: id(taskId), claim, execution_ref });
   }
-  async report(workId: string, report: Report): Promise<Work> {
+  async report(taskId: string, report: Report): Promise<Task> {
     validate('report', report);
-    const methods = { progress: 'report_progress', input_required: 'request_input', completed: 'complete_work', failed: 'fail_work', outcome_unknown: 'mark_outcome_unknown', cancel_confirmed: 'confirm_cancellation' };
+    const methods = { progress: 'report_progress', input_required: 'request_input', completed: 'complete_task', failed: 'fail_task', outcome_unknown: 'mark_outcome_unknown', cancel_confirmed: 'confirm_cancellation' };
     const { kind, ...params } = report;
-    return validate('work', await this.rpc(methods[kind], { work_id: id(workId), ...params }));
+    return validate('task', await this.rpc(methods[kind], { task_id: id(taskId), ...params }));
   }
   async acknowledge(deliveryId: number): Promise<void> {
     if (!Number.isSafeInteger(deliveryId) || deliveryId < 1) throw new Error('Invalid delivery ID');

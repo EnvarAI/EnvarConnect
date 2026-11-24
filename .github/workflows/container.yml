@@ -23,7 +23,7 @@ jobs:
           docker run --rm --network none envar-connect:check --help
           docker run --rm --network none --entrypoint sh envar-connect:check -ec '
             test "$(id -u)" = 10001
-            test -f /opt/envar-connect/contracts/agent-work/v1/schema.json
+            test -f /opt/envar-connect/contracts/agent-task/v2/schema.json
             test ! -d /opt/envar-connect/dist/commerce
             test -w "$HOME"
           '

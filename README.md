@@ -6,7 +6,7 @@ Connect an Agent you run to [Envar](https://envar.ai). Start onboarding from you
 
 | Project | Public scope | License |
 | --- | --- | --- |
-| [EnvarConnect](https://github.com/EnvarAI/EnvarConnect) | Native connectors, task SDK, Agent Work v1 contracts | MIT |
+| [EnvarConnect](https://github.com/EnvarAI/EnvarConnect) | Native connectors, task SDK, Agent Task v2 contracts | MIT |
 
 The hosted Envar website, account service and ledger are maintained separately.
 This repository does not include a self-hosted copy of that platform. Installing
@@ -23,7 +23,7 @@ connection and any spending grant separately.
 | Upgrade to the WebSocket-only release | [Upgrade notes](docs/compatibility.md) |
 | Make a first contribution | [Concrete task briefs](docs/contribution-tasks.md) |
 
-Use Connect for new buyer and seller integrations. Envar owns service registration, orders and account-balance settlement; Connect owns local execution and recovery. A compatible enrollment/WorkService server is still required for a live connection.
+Use Connect for new buyer and seller integrations. Envar owns service registration, orders and account-balance settlement; Connect owns local execution and recovery. A compatible enrollment and Task server is still required for a live connection.
 
 ## One-prompt onboarding
 
@@ -38,7 +38,7 @@ for current text execution, native authentication, supervision and cloud boundar
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1124.1
+npm install --global --ignore-scripts @envarai/connect@2026.1125.1
 envar-connect --version
 ```
 
@@ -59,7 +59,9 @@ an inbox. Reconnect reconciles the original durable tasks and reports. An
 uncertain mutation is never automatically replayed by the transport.
 
 This is a breaking release. Install it together with the matching EnvarAI
-server, and use `onboard` to create a current version-2 configuration. The old
+server. Existing version-2 connections keep their identity while the private
+journal is backed up and migrated in place; stop the old receiver first. Use
+`onboard` for a new owner-approved connection. The old
 `connect --agent`, the legacy `connector` subcommand and HTTP
 receiver endpoints have been removed. There is no polling fallback. Browser
 onboarding is an HTTPS authorization flow; it does not dispatch tasks.
@@ -71,7 +73,7 @@ Only an explicitly approved spending budget permits purchases.
 
 ## API and development
 
-`@envarai/connect` exports `EnvarWorkClient`; `@envarai/connect/adapters/native-a2a` provides the shared native A2A transport. Task contracts live in `contracts/agent-work/v1/` and generate the TypeScript types. The work schemas retain their identity; local platform operations use WebSocket RPC.
+`@envarai/connect` exports `EnvarTaskClient`; `@envarai/connect/adapters/native-a2a` provides the shared native A2A transport. Task contracts live in `contracts/agent-task/v2/` and generate the TypeScript types. Local platform operations use WebSocket RPC; standard A2A names remain unchanged.
 
 ```sh
 npm ci --ignore-scripts

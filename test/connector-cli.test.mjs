@@ -19,7 +19,7 @@ test('CLI reads its current connection over WebSocket without rewriting its iden
   const before=readFileSync(file,'utf8'), calls=[], outputs=[];
   t.mock.method(SocketTransport.prototype,'call',async (method)=>{
     calls.push({method});
-    return {id:connectionId,agent_id:agentId,mode:'inbox',status:'active'};
+    return {id:connectionId,agent_id:agentId,mode:'inbox',status:'active',adapter:'hermes'};
   });
   t.mock.method(console,'log',value=>outputs.push(JSON.parse(value)));
   const args=['status','--directory',directory,'--connection',connectionId];

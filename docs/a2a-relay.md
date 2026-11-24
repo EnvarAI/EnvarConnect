@@ -1,6 +1,6 @@
 # Outbound standard A2A relay
 
-A compatible Envar server can negotiate `a2a-relay.v1` alongside Agent Work v1.
+A compatible Envar server can negotiate `a2a-relay.v1` alongside Agent Task v2.
 The transport carries standard A2A 1.0 requests and Task/Message responses;
 it is not an arbitrary TCP tunnel and requires no public port on the Agent.
 The receiver validates the original command, persists its execution checkpoint
@@ -25,7 +25,7 @@ Tasks retain the required original lookup evidence for platform enrollment.
 The owner selects and tests an explicitly free service before the platform
 advertises it through its public Card. Marketplace orders use the same frozen
 order authorization; the connection itself grants no spending authority.
-Private inventory and legacy paid workflows retain Agent Work v1 until their
+Private inventory and legacy paid workflows retain Agent Task v2 until their
 buyer-only artifact contract is separately verified.
 
 This release declares original Task lookup only. Native input, admitted-task
@@ -37,7 +37,7 @@ instructions, preserving credentials, native binding, SQLite journal and lock.
 Connect reads `protocol_support` from `get_connection` over WSS, then negotiates
 the server-enabled relay version through `relay_hello`. Hermes/OpenClaw use native
 reference envelope version 1; Codex/Claude use tagged local execution references
-in version 2. A disabled relay keeps its existing Work v1 delivery path. Both
+in version 2. A disabled relay keeps its existing Task v2 delivery path. Both
 paths require the current WebSocket server; no old-server or HTTP fallback exists.
 
 ## Platform transport

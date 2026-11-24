@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { WebSocketServer } from 'ws';
-import { SocketTransport, WorkApiError } from '../dist/connector/transport.js';
+import { SocketTransport, TaskApiError } from '../dist/connector/transport.js';
 
 const token = 'envar_agent_' + 'w'.repeat(43);
 async function fixture(t, handle) {
@@ -13,7 +13,7 @@ async function fixture(t, handle) {
   server.on('connection', (socket, request) => {
     assert.equal(request.url, '/api/v1/connect');
     assert.equal(request.headers.authorization, 'Bearer ' + token);
-    assert.equal(socket.protocol, 'envar.connect.v1');
+    assert.equal(socket.protocol, 'envar.connect.v2');
     sockets.push(socket);
     socket.on('message', async raw => {
       const request = JSON.parse(raw);
@@ -29,7 +29,7 @@ async function fixture(t, handle) {
 
 test('one authenticated connection multiplexes RPCs and receives push without idle requests', async t => {
   const f = await fixture(t, async request => ({ result: request.params }));
-  const results = await Promise.all([f.transport.call('get_work', { id: 'a' }), f.transport.call('get_work', { id: 'b' })]);
+  const results = await Promise.all([f.transport.call('get_task', { id: 'a' }), f.transport.call('get_task', { id: 'b' })]);
   assert.deepEqual(results, [{ id: 'a' }, { id: 'b' }]);
   assert.equal(f.sockets.length, 1);
   const before = f.transport.generation;
@@ -43,23 +43,23 @@ test('one authenticated connection multiplexes RPCs and receives push without id
 
 test('a lost mutation response is not replayed on reconnect', async t => {
   const f = await fixture(t, async (request, socket) => {
-    if (request.method === 'start_work') { socket.terminate(); return; }
+    if (request.method === 'start_task') { socket.terminate(); return; }
     return { result: { id: 'original', status: 'working' } };
   });
-  await assert.rejects(f.transport.call('start_work', { work_id: 'original' }), /may have committed/);
-  assert.equal((await f.transport.call('get_work', { work_id: 'original' })).id, 'original');
-  assert.equal(f.calls.filter(r => r.method === 'start_work').length, 1);
+  await assert.rejects(f.transport.call('start_task', { task_id: 'original' }), /may have committed/);
+  assert.equal((await f.transport.call('get_task', { task_id: 'original' })).id, 'original');
+  assert.equal(f.calls.filter(r => r.method === 'start_task').length, 1);
   assert.equal(f.sockets.length, 2);
 });
 
 test('revoked authority is terminal and does not reconnect or downgrade', async t => {
   const f = await fixture(t, async () => ({ error: { code: 403, message: 'private body', data: { status: 403, terminal: true } } }));
-  await assert.rejects(f.transport.call('get_work'), error => error instanceof WorkApiError && !error.message.includes('private'));
-  await assert.rejects(f.transport.call('get_work'), error => error.status === 403);
+  await assert.rejects(f.transport.call('get_task'), error => error instanceof TaskApiError && !error.message.includes('private'));
+  await assert.rejects(f.transport.call('get_task'), error => error.status === 403);
   assert.equal(f.calls.length, 1);
 });
 
-test('receiver reconnect restores its subscription and wakes pending-work reconciliation', async t => {
+test('receiver reconnect restores its subscription and wakes pending-task reconciliation', async t => {
   const f = await fixture(t, async () => ({ result: { subscribed: true } }));
   await f.transport.subscribeReceiver();
   const before = f.transport.generation;

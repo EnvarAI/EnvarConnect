@@ -5,7 +5,7 @@ export interface RelayClaim { id: string; fence: number; }
 export type RelayReference = { origin: string; interface: string; task_id: string; context_id: string; }
   | { kind: 'local_cli_execution'; adapter: string; binding_digest: string; task_id: string; context_id: string; };
 export interface RelayCommand {
-  relay_version: '1' | '2'; command_id: string; connection_id: string; binding_id: string; work_id: string;
+  relay_version: '1' | '2'; command_id: string; connection_id: string; binding_id: string; task_id: string;
   sequence: number; kind: 'send' | 'input' | 'cancel' | 'get'; request_digest: string; control_generation: number;
   a2a: { method: string; params: Record<string, unknown> }; state: string;
   last_event_sequence: number; lease_until: string | null; result_digest: string;
@@ -32,7 +32,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function relayCommand(value: unknown): RelayCommand {
   const command = value as RelayCommand;
   if (!command || !['1','2'].includes(command.relay_version) ||
-      ![command.command_id, command.connection_id, command.binding_id, command.work_id].every(id => typeof id === 'string' && uuid.test(id)) ||
+      ![command.command_id, command.connection_id, command.binding_id, command.task_id].every(id => typeof id === 'string' && uuid.test(id)) ||
       !Number.isSafeInteger(command.sequence) || command.sequence < 1 ||
       !Number.isSafeInteger(command.control_generation) || command.control_generation < 0 ||
       !Number.isSafeInteger(command.last_event_sequence) || command.last_event_sequence < 0 ||

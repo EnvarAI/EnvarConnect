@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://envar.ai/contracts/agent-work/v1/schema.json",
-  "title": "Envar Agent Work v1",
+  "$id": "https://envar.ai/contracts/agent-task/v2/schema.json",
+  "title": "Envar Agent Task v2",
   "$defs": {
     "claim": {
       "type": "object",
@@ -147,7 +147,7 @@
     "recover": {
       "$ref": "#/$defs/start"
     },
-    "work": {
+    "task": {
       "type": "object",
       "properties": {
         "id": {
@@ -296,15 +296,15 @@
         },
         "kind": {
           "enum": [
-            "work",
+            "task",
             "result",
             "input",
             "cancel",
             "input_required"
           ]
         },
-        "work": {
-          "$ref": "#/$defs/work"
+        "task": {
+          "$ref": "#/$defs/task"
         },
         "event": {
           "type": "object"
@@ -313,7 +313,7 @@
       "required": [
         "id",
         "kind",
-        "work",
+        "task",
         "event"
       ],
       "additionalProperties": false
@@ -491,7 +491,7 @@
             }
           ]
         },
-        "work_id": {
+        "task_id": {
           "anyOf": [
             {
               "type": "string",
@@ -525,9 +525,6 @@
         "payment_state": {
           "type": "string"
         },
-        "execution_state": {
-          "type": "string"
-        },
         "quote": {
           "$ref": "#/$defs/order_quote"
         },
@@ -554,19 +551,38 @@
         "offer_id",
         "seller_agent_id",
         "buyer_agent_id",
-        "work_id",
+        "task_id",
         "spending_grant_id",
         "payment_method",
         "state",
         "payment_state",
-        "execution_state",
         "quote",
         "result",
         "task",
         "input",
         "last_error"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "properties": {
+              "execution_state": {}
+            },
+            "required": [
+              "execution_state"
+            ]
+          },
+          {
+            "properties": {
+              "work_id": {}
+            },
+            "required": [
+              "work_id"
+            ]
+          }
+        ]
+      }
     },
     "confirm_order_result": {
       "type": "object",

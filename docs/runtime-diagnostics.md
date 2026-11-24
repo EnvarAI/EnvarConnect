@@ -7,7 +7,7 @@ Envar connection. They do not invoke a model, create a task or grant permissions
 locally. A real task/result test is still required to verify delivery.
 
 The authenticated `report_runtime` operation runs over the same WSS connection
-as task delivery (`/api/v1/connect`, subprotocol `envar.connect.v1`). It requires
+as task delivery (`/api/v1/connect`, subprotocol `envar.connect.v2`). It requires
 `connection:read`, `work:receive` and `work:report` scopes. The `get_connection`
 response exposes the saved report as `runtime`. No HTTP diagnostics fallback is
 used. The report contains no native URL, credential, local profile path, prompt

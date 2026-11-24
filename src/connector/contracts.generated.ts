@@ -1,6 +1,6 @@
-// Generated from the canonical Envar Agent Work v1 JSON Schema. Do not edit.
-// Source: EnvarAI/EnvarConnect contracts/agent-work/v1/schema.json
-export const WORK_SCHEMA_SHA256 = '13142409150be2625fa6e8d2b4943a6714eeb7f17eb0d423e82140851051f290';
+// Generated from the canonical Envar Agent Task v2 JSON Schema. Do not edit.
+// Source: EnvarAI/EnvarConnect contracts/agent-task/v2/schema.json
+export const TASK_SCHEMA_SHA256 = '971ed5a90cbd59201294b9cd1141e72376847dbdd3537d960e5671ca00f94118';
 
 export type Claim = {
   "id": string;
@@ -44,7 +44,7 @@ export type Empty = {
 
 export type Recover = Start;
 
-export type Work = {
+export type Task = {
   "id": string;
   "context_id": string;
   "caller_agent_id": string | null;
@@ -70,8 +70,8 @@ export type Work = {
 
 export type Delivery = {
   "id": number;
-  "kind": "work" | "result" | "input" | "cancel" | "input_required";
-  "work": Work;
+  "kind": "task" | "result" | "input" | "cancel" | "input_required";
+  "task": Task;
   "event": Record<string, unknown>;
 };
 
@@ -114,12 +114,11 @@ export type Order = {
   "offer_id": string;
   "seller_agent_id": string;
   "buyer_agent_id": string | null;
-  "work_id": string | null;
+  "task_id": string | null;
   "spending_grant_id": string | null;
   "payment_method": "free" | "envar_balance";
   "state": string;
   "payment_state": string;
-  "execution_state": string;
   "quote": OrderQuote;
   "result": Record<string, unknown>;
   "task": Record<string, unknown>;

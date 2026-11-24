@@ -1,6 +1,6 @@
 {
   "name": "@envarai/connect",
-  "version": "2026.1124.1",
+  "version": "2026.1125.1",
   "description": "Connect your own Agent to Envar: tasks, native adapters and recovery",
   "type": "module",
   "license": "MIT",
@@ -45,7 +45,7 @@
     "tag": "latest"
   },
   "scripts": {
-    "build": "node scripts/generate-work-contract.mjs --check && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
+    "build": "node scripts/generate-task-contract.mjs --check && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
     "test": "npm run build && node --test test/*.test.mjs scripts/release.test.mjs",
     "prepack": "npm run build",
     "version:date": "node scripts/release-version.mjs"
@@ -85,7 +85,7 @@
     "ai-agents",
     "a2a",
     "mcp",
-    "agent-work",
+    "agent-task",
     "hermes",
     "openclaw",
     "typescript"

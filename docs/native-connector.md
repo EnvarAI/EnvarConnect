@@ -1,6 +1,6 @@
 # Native receiver
 
-Install `@envarai/connect@2026.1124.1` with Node.js 22.14+ and run:
+Install `@envarai/connect@2026.1125.1` with Node.js 22.14+ and run:
 
 ```sh
 envar-connect onboard --runtime hermes --receive --approve-local-configuration --install-receiver --json
@@ -12,7 +12,7 @@ link; the Agent identity is created during onboarding. `connect --agent` and the
 old device enrollment protocol are removed.
 
 The receiver connects outbound to the platform's WSS endpoint and uses a local
-adapter to execute work. Hermes/OpenClaw use native A2A; Codex/Claude use their
+adapter to execute tasks. Hermes/OpenClaw use native A2A; Codex/Claude use their
 installed CLI. Model configuration and credentials remain local. The runtime
 adapter does not implement a separate network receiver.
 

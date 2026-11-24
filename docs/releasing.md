@@ -12,7 +12,7 @@ Configure the npm Trusted Publisher for `@envarai/connect`: GitHub owner `EnvarA
 
 ## Contracts
 
-`contracts/agent-work/v1/schema.json` is the source. Run `node scripts/generate-work-contract.mjs` after editing it. Commit generated types. Publish compatible contracts before updating EnvarAI's pinned copy; incompatible v1 changes require a new contract version. Runtime code never downloads a schema.
+`contracts/agent-task/v2/schema.json` is the source. Run `node scripts/generate-task-contract.mjs` after editing it. Commit generated types. Publish the matching v2 contract before updating EnvarAI's pinned copy; incompatible later changes require a new contract version. Runtime code never downloads a schema.
 
 ## Promote consumers after publication
 

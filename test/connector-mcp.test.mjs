@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { EnvarWorkClient } from '../dist/connector/client.js';
+import { EnvarTaskClient } from '../dist/connector/client.js';
 import { connectorMcp } from '../dist/connector/mcp.js';
 import { ConnectorJournal } from '../dist/connector/state.js';
 
 async function connect(t, scopes, api) {
   const journal = new ConnectorJournal(':memory:', { origin: 'https://envar.example', agentId: randomUUID(),
     connectionId: randomUUID(), adapter: 'hermes', cardUrl: 'http://127.0.0.1/card' });
-  api.waitResult ??= EnvarWorkClient.prototype.waitResult.bind(api);
+  api.waitResult ??= EnvarTaskClient.prototype.waitResult.bind(api);
   const server = connectorMcp(api, journal, scopes);
   const client = new Client({ name: 'native-agent', version: '1' });
   const [a, b] = InMemoryTransport.createLinkedPair();
@@ -22,14 +22,14 @@ async function connect(t, scopes, api) {
 test('native MCP only advertises explicitly granted outgoing permissions', async t => {
   const { client } = await connect(t, ['connection:read', 'work:read'], { status: async () => ({ agent_id: 'configured' }) });
   const names = (await client.listTools()).tools.map(tool => tool.name);
-  assert.ok(names.includes('get_work')); assert.ok(names.includes('wait_work'));
-  assert.ok(!names.includes('send_message')); assert.ok(!names.includes('complete_work'));
+  assert.ok(names.includes('get_task')); assert.ok(names.includes('wait_task'));
+  assert.ok(!names.includes('send_message')); assert.ok(!names.includes('complete_task'));
   assert.ok(!names.includes('confirm_order')); assert.ok(names.includes('list_spending_grants'));
   assert.ok(!names.some(name => /wallet|purchase|claim/.test(name)));
 });
 test('native service quote survives a lost response and keeps one original request', async t => {
   let lost = true, quotes = 0, reads = 0;
-  const original = { id: randomUUID(), state: 'previewed' }, requests = [];
+  const original = { id: randomUUID(), state: 'quoted' }, requests = [];
   const { client } = await connect(t, ['work:read', 'work:send'], {
     quoteService: async body => { quotes++; requests.push(body.message_id); if (lost) { lost = false; throw new Error('lost quote response'); } return original; },
     order: async id => { reads++; assert.equal(id, original.id); return original; },
@@ -45,14 +45,14 @@ test('native service quote survives a lost response and keeps one original reque
 test('native confirmation returns owner approval and never retries a financial POST itself', async t => {
   let confirms = 0;
   const { client } = await connect(t, ['work:send'], { confirmOrder: async () => {
-    confirms++; return { approval_required: true, approval_url: 'https://envar.example/console/orders/original', order: { state: 'previewed' } };
+    confirms++; return { approval_required: true, approval_url: 'https://envar.example/console/orders/original', order: { state: 'quoted' } };
   } });
   const tools = (await client.listTools()).tools;
   assert.equal(tools.find(tool => tool.name === 'confirm_order').annotations.destructiveHint, true);
   const response = await client.callTool({ name: 'confirm_order', arguments: { order_id: randomUUID(), message_id: randomUUID(), quote_token: 'original-quote' } });
   assert.equal(response.structuredContent.approval_required, true); assert.equal(confirms, 1);
 });
-test('send replay reads the original work and changed content is rejected', async t => {
+test('send replay reads the original task and changed content is rejected', async t => {
   const row = { id: randomUUID(), status: 'completed', result: { text: 'Original peer result' } };
   let sends = 0, reads = 0;
   const { client } = await connect(t, ['work:send'], { send: async () => { sends++; return row; }, get: async () => { reads++; return row; } });
@@ -76,12 +76,12 @@ test('lost send response retains the original request key for backend idempotenc
   assert.equal(recovered.structuredContent.id, rows.get(args.request_id).id);
   assert.deepEqual(requests, [args.request_id, args.request_id]); assert.equal(rows.size, 1);
 });
-test('waiting returns input-required or unknown without starting replacement work', async t => {
+test('waiting returns input-required or unknown without starting replacement task', async t => {
   let status = 'input_required', calls = 0;
   const { client } = await connect(t, ['work:read'], { get: async id => { calls++; return { id, status, result: { text: 'Which format?' } }; } });
-  const args = { work_id: randomUUID(), seconds: 1 };
-  assert.equal((await client.callTool({ name: 'wait_work', arguments: args })).structuredContent.status, 'input_required');
+  const args = { task_id: randomUUID(), seconds: 1 };
+  assert.equal((await client.callTool({ name: 'wait_task', arguments: args })).structuredContent.status, 'input_required');
   status = 'unknown';
-  assert.equal((await client.callTool({ name: 'wait_work', arguments: args })).structuredContent.status, 'unknown');
+  assert.equal((await client.callTool({ name: 'wait_task', arguments: args })).structuredContent.status, 'unknown');
   assert.equal(calls, 2);
 });

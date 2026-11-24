@@ -31,11 +31,11 @@ function fixture(Adapter) {
     } });
   return { adapter, calls, card, state };
 }
-const work = () => ({ id: randomUUID(), context_id: randomUUID(), request: { message: 'Bounded task' } });
+const task = () => ({ id: randomUUID(), context_id: randomUUID(), request: { message: 'Bounded task' } });
 
 for (const Adapter of [HermesRuntimeAdapter, OpenClawRuntimeAdapter]) {
   test(`${Adapter.name}: native task and same-handle recovery retain normal runtime identity`, async () => {
-    const f = fixture(Adapter), w = work();
+    const f = fixture(Adapter), w = task();
     const ready = await f.adapter.probe();
     assert.equal(ready.capabilities.cancel, false);
     assert.deepEqual(ready.recovery, { taskLookupAfterRestart: false, executionKeyLookup: false, resultPersistence: false });
@@ -57,19 +57,19 @@ for (const Adapter of [HermesRuntimeAdapter, OpenClawRuntimeAdapter]) {
   });
 }
 test('native restart losing task state remains unknown without another SendMessage', async () => {
-  const f = fixture(OpenClawRuntimeAdapter), w = work();
+  const f = fixture(OpenClawRuntimeAdapter), w = task();
   const started = await f.adapter.start(w, w.id);
   f.state.missing = true;
   await assert.rejects(f.adapter.observe(started.reference), RuntimeOutcomeUnknown);
   assert.deepEqual(f.calls.map(call => call.method), ['SendMessage', 'GetTask']);
 });
 test('lost native POST is never automatically replayed', async () => {
-  const f = fixture(HermesRuntimeAdapter), w = work(); f.state.loseSend = true;
+  const f = fixture(HermesRuntimeAdapter), w = task(); f.state.loseSend = true;
   await assert.rejects(f.adapter.start(w, w.id), RuntimeOutcomeUnknown);
   assert.equal(f.calls.filter(call => call.method === 'SendMessage').length, 1);
 });
 test('changed reference or Card origin cannot redirect the native credential', async () => {
-  const f = fixture(HermesRuntimeAdapter), w = work();
+  const f = fixture(HermesRuntimeAdapter), w = task();
   const started = await f.adapter.start(w, w.id);
   await assert.rejects(f.adapter.observe({ ...started.reference, adapter: 'openclaw' }), RuntimeOutcomeUnknown);
   f.card.supportedInterfaces[0].url = 'https://other.example/a2a';
