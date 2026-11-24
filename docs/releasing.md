@@ -16,4 +16,4 @@ Configure the npm Trusted Publisher for `@envarai/connect`: GitHub owner `EnvarA
 
 ## Promote consumers after publication
 
-Read the public npm version and SHA-512 integrity before updating the website download manifest or Pay's pinned/bundled Connect dependency. Test each consumer and preserve the original state directory. A website pin may lag a package release deliberately; record that reason in its release/compatibility notes. No receiver is upgraded merely by publishing npm latest.
+Read the public npm version and SHA-512 integrity before updating the website download manifest or another consumer's pinned Connect dependency. Test each consumer and preserve the original state directory. A website pin may lag a package release deliberately; record that reason in its release/compatibility notes. No receiver is upgraded merely by publishing npm latest.

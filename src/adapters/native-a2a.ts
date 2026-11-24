@@ -1,4 +1,4 @@
-/** Shared official A2A transport for local runtime adapters and the legacy seller gate. */
+/** Official A2A transport for local runtime adapters. */
 import { randomUUID } from 'node:crypto';
 import { AgentCard, GetTaskRequest, Message, SendMessageRequest, Task } from '@a2a-js/sdk';
 import { TaskNotFoundError, RequestMalformedError } from '@a2a-js/sdk/errors';
