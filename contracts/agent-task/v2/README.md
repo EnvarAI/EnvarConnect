@@ -3,7 +3,7 @@
 Canonical JSON Schema for inbox tasks shared by the application, MCP and WebSocket Connect. Domain authorization and state transitions belong to the server; transport adapters do not own tasks or balances. Direct A2A/MCP requests retain their protocol-specific inputs.
 
 - Owner creates `/api/v1/agents/{id}/connections` with `mode: inbox` or `mode: direct` and a verified `endpoint_id`.
-- Owner manages credentials and explicit free-task peer grants under `/api/v1/agent-connections/{id}`. The retired generic `/connections` API remains absent.
+- Owner manages credentials and explicit free-task peer grants under `/api/v1/connections/{id}`; Agent-scoped connection listing remains `/api/v1/agents/{id}/connections`.
 - Receiver credential uses `connection:read`, `work:receive`, `work:report`, `work:read`. `work:send` is a separate optional permission. None alone grants account management, publication or balance spending. Paid orders additionally require a separately created owner spending grant or the owner's confirmation of that original quote.
 - `send_message` uses a UUID `request_id` and returns the original Task (new or replayed). Reusing a key with changed content conflicts.
 - A task canceled before its first claim has a terminal status and no execution authority (`claim.id` is null, fence 0). Check terminal status before using claim fields. Never fabricate a claim to restart canceled work.
