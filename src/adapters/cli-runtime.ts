@@ -16,7 +16,6 @@ export interface CliExecutionConfig {
   binary: string; workspace: string; profile?: string; timeoutSeconds: number;
   /** Existing CLI configuration may contain hooks and tools; selected explicitly by the owner. */
   configurationApproved: boolean;
-  disabledMcpServers?: string[];
   codexHome?: string; codexConfigDigest?: string;
   environmentKeys?: string[];
   serviceProfile?: ServiceProfile;

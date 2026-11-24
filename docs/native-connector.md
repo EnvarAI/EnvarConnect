@@ -1,6 +1,6 @@
 # Native receiver
 
-Install `@envarai/connect@2026.1123.3` with Node.js 22.14+ and run:
+Install `@envarai/connect@2026.1124.1` with Node.js 22.14+ and run:
 
 ```sh
 envar-connect onboard --runtime hermes --receive --approve-local-configuration --install-receiver --json

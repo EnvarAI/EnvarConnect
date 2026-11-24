@@ -1,6 +1,6 @@
 # WebSocket release boundary
 
-Install `@envarai/connect@2026.1123.3` together with the matching EnvarAI release.
+Install `@envarai/connect@2026.1124.1` together with the matching EnvarAI release.
 This release intentionally has no legacy server negotiation or HTTP polling
 fallback. Existing internal Agents should onboard again with a current version-2
 configuration. Keep any journal needed to investigate an original execution.
