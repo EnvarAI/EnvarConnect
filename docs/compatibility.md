@@ -1,6 +1,6 @@
 # WebSocket release boundary
 
-Install `@envarai/connect@2026.1125.1` together with the matching EnvarAI release.
+Install `@envarai/connect@2026.1125.2` together with the matching EnvarAI release.
 This release intentionally has no legacy server negotiation or HTTP polling
 fallback. An existing version-2 connection keeps its identity and credential.
 Connect backs up and migrates its private SQLite journal in place before use;

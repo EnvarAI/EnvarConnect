@@ -20,7 +20,15 @@ copy; built-in runtime skills remain governed by native configuration.
 
 Each task gets a separate workspace with copies of the approved skills, tool
 scripts and instructions. Codex sees `.agents/skills`; Claude sees
-`.claude/skills`. The dedicated profile remains the native configuration/login
+`.claude/skills`. For Claude Code, Connect exposes those copied skills through
+a minimal private per-task plugin named `envar-service`; invoke a selected
+skill as `envar-service:<skill-name>` (for example,
+`envar-service:calculate`). The plugin contains only the approved skill files
+and its fixed manifest. Connect refuses a task workspace that already has a
+`.claude` directory, so ambient project settings, hooks and extra skills cannot
+join that plugin. Claude's user, project and local settings sources remain
+disabled; only the selected profile's explicit `settings.json` and `mcp.json`
+are loaded. The dedicated profile remains the native configuration/login
 home. The process HOME is the dedicated profile’s `home/` directory, so implicit personal-home configuration is not imported. Configure tool credentials through explicit environment references. Native permission rules and system/organization policies still apply. Connect never adds a permission
 bypass flag or grants platform spending from a local profile. Configure only
 the headless tools the service is intended to use; unexpected approval requests

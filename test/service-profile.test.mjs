@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,symlinkSync,rmSync} from 'node:fs';
+import {existsSync,mkdtempSync,mkdirSync,writeFileSync,readFileSync,readdirSync,symlinkSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {inspectServiceProfile,verifyServiceProfile,materializeServiceProfile} from '../dist/adapters/service-profile.js';
+import {inspectServiceProfile,verifyServiceProfile,materializeServiceProfile,CLAUDE_SERVICE_PLUGIN} from '../dist/adapters/service-profile.js';
 import {CliRuntimeAdapter,cliCommand} from '../dist/adapters/cli-runtime.js';
 import {runtimeReport} from '../dist/connector/runtime-report.js';
 function profile(t,runtime='codex'){
@@ -18,6 +18,11 @@ test('approved skills and tool files are bound and copied into the native worksp
   const root=profile(t,runtime),selected=inspectServiceProfile(runtime,root),workspace=join(root,'job');mkdirSync(workspace);
   assert.equal(selected.skillCount,1);materializeServiceProfile(runtime,selected,workspace);
   assert.match(readFileSync(join(workspace,runtime==='codex'?'.agents':'.claude','skills','calculate','SKILL.md'),'utf8'),/calculator/);
+  if(runtime==='claude-code'){
+   const plugin=join(workspace,'.claude');
+   assert.deepEqual(readdirSync(plugin).sort(),['.claude-plugin','skills']);
+   assert.equal(JSON.parse(readFileSync(join(plugin,'.claude-plugin','plugin.json'),'utf8')).name,CLAUDE_SERVICE_PLUGIN);
+  }
   assert.equal(readFileSync(join(workspace,'tools','calculator.mjs'),'utf8'),'console.log(42)');
   writeFileSync(join(root,'auth.json'),'rotating native login remains local');
   assert.equal(verifyServiceProfile(runtime,selected).digest,selected.digest);
@@ -45,7 +50,23 @@ test('Claude profiles use explicit native settings and MCP without bypass flags'
  const args=cliCommand('claude-code',config,join(root,'job'));
  assert.equal(args[args.indexOf('--settings')+1],join(config.serviceProfile.root,'settings.json'));
  assert.equal(args[args.indexOf('--mcp-config')+1],join(config.serviceProfile.root,'mcp.json'));
+ assert.equal(args[args.indexOf('--setting-sources')+1],'');
+ assert.equal(args[args.indexOf('--plugin-dir')+1],join(root,'job','.claude'));
  assert.ok(!args.includes('--disable-slash-commands'));assert.ok(!args.some(x=>x.startsWith('--dangerously-')));
+});
+test('Claude refuses a preexisting project configuration beside selected skills',t=>{
+ const root=profile(t,'claude-code'),selected=inspectServiceProfile('claude-code',root),workspace=join(root,'job');
+ mkdirSync(join(workspace,'.claude'),{recursive:true});
+ writeFileSync(join(workspace,'.claude','settings.json'),JSON.stringify({hooks:{}}));
+ assert.throws(()=>materializeServiceProfile('claude-code',selected,workspace),/already contains configuration/);
+ assert.deepEqual(readdirSync(join(workspace,'.claude')),['settings.json']);
+});
+test('a Claude profile without selected skills does not load a plugin',t=>{
+ const root=profile(t,'claude-code');rmSync(join(root,'skills'),{recursive:true});
+ const selected=inspectServiceProfile('claude-code',root),workspace=join(root,'job');mkdirSync(workspace);
+ materializeServiceProfile('claude-code',selected,workspace);
+ assert.equal(selected.skillCount,0);assert.equal(existsSync(join(workspace,'.claude')),false);
+ assert.ok(!cliCommand('claude-code',{serviceProfile:selected},workspace).includes('--plugin-dir'));
 });
 test('only a bounded profile fingerprint enters platform diagnostics',t=>{
  const root=profile(t),p=inspectServiceProfile('codex',root);
