@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-const source = new URL('../contracts/agent-work/v1/schema.json', import.meta.url);
+const source = new URL('../contracts/agent-task/v2/schema.json', import.meta.url);
 const target = new URL('../src/connector/contracts.generated.ts', import.meta.url);
 const text = readFileSync(source, 'utf8'), schema = JSON.parse(text);
 const name = value => value.split('_').map(part => part[0].toUpperCase() + part.slice(1)).join('');
@@ -17,8 +17,8 @@ function type(s) {
   if (s.type === 'integer' || s.type === 'number') return 'number';
   return ['string', 'boolean', 'null'].includes(s.type) ? s.type : 'unknown';
 }
-const generated = `// Generated from the canonical Envar Agent Work v1 JSON Schema. Do not edit.\n// Source: EnvarAI/EnvarConnect contracts/agent-work/v1/schema.json\nexport const WORK_SCHEMA_SHA256 = '${createHash('sha256').update(text).digest('hex')}';\n\n` +
+const generated = `// Generated from the canonical Envar Agent Task v2 JSON Schema. Do not edit.\n// Source: EnvarAI/EnvarConnect contracts/agent-task/v2/schema.json\nexport const TASK_SCHEMA_SHA256 = '${createHash('sha256').update(text).digest('hex')}';\n\n` +
   Object.entries(schema.$defs).map(([key, value]) => `export type ${name(key)} = ${type(value)};\n`).join('\n');
 if (process.argv.includes('--check')) {
-  if (readFileSync(target, 'utf8') !== generated) throw new Error('Run node scripts/generate-work-contract.mjs');
+  if (readFileSync(target, 'utf8') !== generated) throw new Error('Run node scripts/generate-task-contract.mjs');
 } else writeFileSync(target, generated);

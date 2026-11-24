@@ -5,7 +5,7 @@ import { randomUUID, randomBytes } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { EnvarWorkClient } from '../dist/connector/client.js';
+import { EnvarTaskClient } from '../dist/connector/client.js';
 import { ConnectorJournal } from '../dist/connector/state.js';
 import { ConnectorLoop } from '../dist/connector/loop.js';
 import { HermesRuntimeAdapter } from '../dist/adapters/hermes.js';
@@ -58,8 +58,8 @@ nativeOrigin = `http://127.0.0.1:${native.address().port}`;
 const directory = mkdtempSync(join(tmpdir(), 'envar-platform-e2e-'));
 const binding = { origin: origin.origin, agentId: fixture.receiver.agent_id,
   connectionId: fixture.receiver.connection_id, adapter: 'hermes', cardUrl: nativeOrigin + '/card' };
-const caller = new EnvarWorkClient(origin.origin, fixture.caller.token, { allowLocalHttp: true });
-const receiver = new EnvarWorkClient(origin.origin, fixture.receiver.token, { allowLocalHttp: true });
+const caller = new EnvarTaskClient(origin.origin, fixture.caller.token, { allowLocalHttp: true });
+const receiver = new EnvarTaskClient(origin.origin, fixture.receiver.token, { allowLocalHttp: true });
 const runtime = new HermesRuntimeAdapter({ cardUrl: binding.cardUrl, token });
 let journal, loop;
 const reopen = () => {
@@ -99,8 +99,8 @@ try {
   assert.equal((await caller.get(second.id)).status, 'unknown');
   assert.equal(sends, 2);
   assert.equal((await receiver.status()).runtime.capabilities.task_lookup_after_restart, false);
-  console.log(JSON.stringify({ connector_version: CONNECTOR_VERSION, platform: origin.origin,
-    normal_work: first.id, unknown_work: second.id, native_dispatches: sends,
+  console.log(JSON.stringify({ connector_version: CONNECTOR_VERSION, origin: origin.origin,
+    normal_task: first.id, unknown_task: second.id, native_dispatches: sends,
     duplicate_submission: 'same original task', connector_restart: 'original result recovered',
     lost_native_response: 'unknown without resubmission', diagnostic_report: 'read back from real API',
     runtime: 'native A2A protocol fixture; no model, funds or external tools' }, null, 2));

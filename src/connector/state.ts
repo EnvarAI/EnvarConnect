@@ -1,16 +1,16 @@
 /** Owner-only durable journal. Transport receipts never imply a second execution. */
 import { chmodSync, closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import type { Claim, Delivery, Report, Work } from './contracts.generated.js';
+import type { Claim, Delivery, Report, Task } from './contracts.generated.js';
 import type { RuntimeObservation, RuntimeReference } from '../adapters/types.js';
 import { relayCommand, type RelayCommand, type RelayRecord } from './relay-types.js';
 
 export type Phase = 'prepared' | 'claimed' | 'admitted' | 'dispatching' | 'running' | 'waiting_input' | 'report_pending' | 'unknown' | 'terminal';
-export interface LocalWork {
-  work: Work; deliveryId: number; phase: Phase; claimRequestId: string;
+export interface LocalTask {
+  task: Task; deliveryId: number; phase: Phase; claimRequestId: string;
   claim?: Claim & { lease_until: string | null }; reference?: RuntimeReference;
   pendingReport?: Report; afterReport?: Phase; observation?: RuntimeObservation; lastObservation?: string; error?: string;
 }
@@ -29,6 +29,32 @@ function privateFile(path: string) {
   const s = lstatSync(path);
   if (!s.isFile() || s.isSymbolicLink() || (s.mode & 0o077)) throw new Error('Use an owner-only regular Connector file');
 }
+function object(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('The original Connector journal shape changed');
+  return value as Record<string, unknown>;
+}
+/** Change only Connect envelope names. User requests and native A2A data remain opaque. */
+function migrateTaskRecord(raw: string, id: string): string {
+  const record = object(parseStored(raw)), task = object(record.work);
+  if (task.id !== id || record.task !== undefined) throw new Error('The original task journal is incomplete');
+  const { work: _old, ...rest } = record;
+  return JSON.stringify({ ...rest, task });
+}
+function migrateDelivery(raw: string, id: number): { kind: string; value: string } {
+  const delivery = object(parseStored(raw)), task = object(delivery.work);
+  if (typeof task.id !== 'string' || delivery.id !== id || delivery.task !== undefined || typeof delivery.kind !== 'string')
+    throw new Error('The original delivery is incomplete');
+  const { work: _old, ...rest } = delivery;
+  const kind = delivery.kind === 'work' ? 'task' : String(delivery.kind);
+  return { kind, value: JSON.stringify({ ...rest, kind, task }) };
+}
+function migrateRelay(raw: string, id: string): string {
+  const record = object(parseStored(raw)), command = object(record.command);
+  if (command.command_id !== id || typeof command.work_id !== 'string' || command.task_id !== undefined)
+    throw new Error('The original relay identity is incomplete');
+  const { work_id: task_id, ...rest } = command;
+  return JSON.stringify({ ...record, command: { ...rest, task_id } });
+}
 export class ConnectorJournal {
   private readonly db: DatabaseSync;
   private lock?: { path: string; nonce: string; fd?: number };
@@ -39,20 +65,71 @@ export class ConnectorJournal {
       if (!directory.isDirectory() || directory.isSymbolicLink() || (directory.mode & 0o077)) throw new Error('Use a private Connector directory');
       if (existsSync(path)) privateFile(path);
     }
+    const existed = path !== ':memory:' && existsSync(path);
     this.db = new DatabaseSync(path);
-    if (path !== ':memory:') chmodSync(path, 0o600);
-    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;
-      CREATE TABLE IF NOT EXISTS connector_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS connector_work (id TEXT PRIMARY KEY,phase TEXT NOT NULL,value TEXT NOT NULL,created INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS connector_delivery (id INTEGER PRIMARY KEY,kind TEXT NOT NULL,value TEXT NOT NULL,acked INTEGER NOT NULL DEFAULT 0);
-      CREATE TABLE IF NOT EXISTS connector_outgoing (id TEXT PRIMARY KEY,request TEXT NOT NULL,work TEXT);
-      CREATE TABLE IF NOT EXISTS connector_control (id INTEGER PRIMARY KEY,value TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS connector_order_request (id TEXT PRIMARY KEY,request TEXT NOT NULL,order_id TEXT);
-      CREATE TABLE IF NOT EXISTS connector_relay (id TEXT PRIMARY KEY,phase TEXT NOT NULL,value TEXT NOT NULL,created INTEGER NOT NULL);
-      CREATE INDEX IF NOT EXISTS connector_work_phase ON connector_work(phase,created);`);
-    const existing = this.db.prepare("SELECT value FROM connector_meta WHERE key='binding'").get();
-    if (existing && existing.value !== JSON.stringify(binding)) { this.db.close(); throw new Error('This journal belongs to another Agent or runtime binding'); }
-    this.db.prepare("INSERT OR IGNORE INTO connector_meta VALUES ('binding',?)").run(JSON.stringify(binding));
+    try {
+      if (path !== ':memory:') chmodSync(path, 0o600);
+      this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
+      const meta = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='connector_meta'").get();
+      if (meta) {
+        const existing = this.db.prepare("SELECT value FROM connector_meta WHERE key='binding'").get();
+        if (!existing || existing.value !== JSON.stringify(binding)) throw new Error('This journal belongs to another Agent or runtime binding');
+        const version = this.db.prepare("SELECT value FROM connector_meta WHERE key='schema_version'").get();
+        if (!version) this.migrateV1(path);
+        else if (version.value !== '2') throw new Error('Unsupported Connector journal version; preserve the original state');
+        else {
+          const taskTable = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='connector_task'").get();
+          if (!taskTable) throw new Error('The versioned Connector task journal is incomplete');
+        }
+      } else if (existed) throw new Error('An existing Connector journal has no binding; preserve it for inspection');
+      else this.createV2(binding);
+    } catch (error) { this.db.close(); throw error; }
+  }
+  private createV2(binding: ConnectorBinding): void {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.exec('CREATE TABLE connector_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE connector_task (id TEXT PRIMARY KEY,phase TEXT NOT NULL,value TEXT NOT NULL,created INTEGER NOT NULL); CREATE TABLE connector_delivery (id INTEGER PRIMARY KEY,kind TEXT NOT NULL,value TEXT NOT NULL,acked INTEGER NOT NULL DEFAULT 0); CREATE TABLE connector_outgoing (id TEXT PRIMARY KEY,request TEXT NOT NULL,task TEXT); CREATE TABLE connector_control (id INTEGER PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE connector_order_request (id TEXT PRIMARY KEY,request TEXT NOT NULL,order_id TEXT); CREATE TABLE connector_relay (id TEXT PRIMARY KEY,phase TEXT NOT NULL,value TEXT NOT NULL,created INTEGER NOT NULL); CREATE INDEX connector_task_phase ON connector_task(phase,created);');
+      this.db.prepare("INSERT INTO connector_meta VALUES ('binding',?)").run(JSON.stringify(binding));
+      this.db.prepare("INSERT INTO connector_meta VALUES ('schema_version','2')").run();
+      this.db.exec('COMMIT');
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+  private migrateV1(path: string): void {
+    if (path === ':memory:') throw new Error('An in-memory legacy journal cannot be migrated safely');
+    this.acquireProcessLock(join(dirname(path), 'receiver.lock'));
+    try {
+      const sourceVersion = this.db.prepare('PRAGMA data_version').get()?.data_version;
+      const backup = path + '.v1-backup-' + randomUUID() + '.sqlite3';
+      this.db.prepare('VACUUM INTO ?').run(backup);
+      chmodSync(backup, 0o600);
+      const copy = new DatabaseSync(backup, { readOnly: true });
+      try {
+        if (copy.prepare('PRAGMA integrity_check').get()?.integrity_check !== 'ok' ||
+            copy.prepare("SELECT value FROM connector_meta WHERE key='binding'").get()?.value !== JSON.stringify(this.binding))
+          throw new Error('The original journal backup failed verification');
+      } finally { copy.close(); }
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        // A client-only tool can use this journal without a receiver lock.
+        // Its last write must be in the backup too; otherwise retry with a new copy.
+        if (this.db.prepare('PRAGMA data_version').get()?.data_version !== sourceVersion)
+          throw new Error('The original journal changed during backup; retry migration');
+        const required = ['connector_work', 'connector_delivery', 'connector_outgoing', 'connector_control', 'connector_order_request', 'connector_relay'];
+        const tables = new Set(this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => String(row.name)));
+        if (required.some(name => !tables.has(name)) || tables.has('connector_task')) throw new Error('The original journal schema is incomplete');
+        for (const row of this.db.prepare('SELECT id,value FROM connector_work').all())
+          this.db.prepare('UPDATE connector_work SET value=? WHERE id=?').run(migrateTaskRecord(String(row.value), String(row.id)), row.id);
+        for (const row of this.db.prepare('SELECT id,value FROM connector_delivery').all()) {
+          const converted = migrateDelivery(String(row.value), Number(row.id));
+          this.db.prepare('UPDATE connector_delivery SET kind=?,value=? WHERE id=?').run(converted.kind, converted.value, row.id);
+        }
+        for (const row of this.db.prepare('SELECT id,value FROM connector_relay').all())
+          this.db.prepare('UPDATE connector_relay SET value=? WHERE id=?').run(migrateRelay(String(row.value), String(row.id)), row.id);
+        this.db.exec('ALTER TABLE connector_work RENAME TO connector_task; ALTER TABLE connector_outgoing RENAME COLUMN work TO task; DROP INDEX connector_work_phase; CREATE INDEX connector_task_phase ON connector_task(phase,created);');
+        this.db.prepare("INSERT INTO connector_meta VALUES ('schema_version','2')").run();
+        this.db.exec('COMMIT');
+      } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    } finally { this.releaseProcessLock(); }
   }
   /** One receiver per journal; Linux kernel locks survive PID reuse safely. */
   acquireProcessLock(path: string): void {
@@ -109,36 +186,36 @@ export class ConnectorJournal {
     }
   }
   ingest(delivery: Delivery): void {
-    const work = delivery.work;
-    const incoming = ['work', 'input', 'cancel'].includes(delivery.kind);
-    if (incoming ? work.target_agent_id !== this.binding.agentId || work.connection_id !== this.binding.connectionId
-      : work.caller_agent_id !== this.binding.agentId) throw new Error('Inbox delivery belongs to another Agent');
+    const task = delivery.task;
+    const incoming = ['task', 'input', 'cancel'].includes(delivery.kind);
+    if (incoming ? task.target_agent_id !== this.binding.agentId || task.connection_id !== this.binding.connectionId
+      : task.caller_agent_id !== this.binding.agentId) throw new Error('Inbox delivery belongs to another Agent');
     const old = this.db.prepare('SELECT value FROM connector_delivery WHERE id=?').get(delivery.id);
     if (old) {
       const saved = parseStored<Delivery>(String(old.value));
-      if (saved.kind !== delivery.kind || saved.work.id !== work.id || digest(saved.event) !== digest(delivery.event))
+      if (saved.kind !== delivery.kind || saved.task.id !== task.id || digest(saved.event) !== digest(delivery.event))
         throw new Error('Delivery identity changed');
     }
     this.db.prepare('INSERT INTO connector_delivery(id,kind,value) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value')
       .run(delivery.id, delivery.kind, JSON.stringify(delivery));
-    if (delivery.kind === 'work') {
-      const prior = this.get(work.id);
-      if (prior && digest([prior.work.target_agent_id, prior.work.connection_id, prior.work.context_id, prior.work.request]) !==
-          digest([work.target_agent_id, work.connection_id, work.context_id, work.request])) throw new Error('Work request changed');
-      if (!prior) this.save({ work, deliveryId: delivery.id, phase: 'prepared', claimRequestId: randomUUID() });
+    if (delivery.kind === 'task') {
+      const prior = this.get(task.id);
+      if (prior && digest([prior.task.target_agent_id, prior.task.connection_id, prior.task.context_id, prior.task.request]) !==
+          digest([task.target_agent_id, task.connection_id, task.context_id, task.request])) throw new Error('Task request changed');
+      if (!prior) this.save({ task, deliveryId: delivery.id, phase: 'prepared', claimRequestId: randomUUID() });
     }
   }
-  save(record: LocalWork): void {
-    this.db.prepare('INSERT INTO connector_work VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET phase=excluded.phase,value=excluded.value')
-      .run(record.work.id, record.phase, JSON.stringify(record), Date.now());
+  save(record: LocalTask): void {
+    this.db.prepare('INSERT INTO connector_task VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET phase=excluded.phase,value=excluded.value')
+      .run(record.task.id, record.phase, JSON.stringify(record), Date.now());
   }
-  get(id: string): LocalWork | undefined {
-    const row = this.db.prepare('SELECT value FROM connector_work WHERE id=?').get(id);
-    return row ? parseStored<LocalWork>(String(row.value)) : undefined;
+  get(id: string): LocalTask | undefined {
+    const row = this.db.prepare('SELECT value FROM connector_task WHERE id=?').get(id);
+    return row ? parseStored<LocalTask>(String(row.value)) : undefined;
   }
-  pending(): LocalWork[] {
-    return this.db.prepare("SELECT value FROM connector_work WHERE phase!='terminal' ORDER BY created,id").all()
-      .map(row => parseStored<LocalWork>(String(row.value)));
+  pending(): LocalTask[] {
+    return this.db.prepare("SELECT value FROM connector_task WHERE phase!='terminal' ORDER BY created,id").all()
+      .map(row => parseStored<LocalTask>(String(row.value)));
   }
   deliveries(): Delivery[] {
     return this.db.prepare('SELECT value FROM connector_delivery WHERE acked=0 ORDER BY id').all()
@@ -149,18 +226,18 @@ export class ConnectorJournal {
       .all().map(row => parseStored<Delivery>(String(row.value)));
   }
   acknowledge(id: number): void { this.db.prepare('UPDATE connector_delivery SET acked=1 WHERE id=?').run(id); }
-  outgoing(requestId: string, request: unknown): Work | undefined {
+  outgoing(requestId: string, request: unknown): Task | undefined {
     const encoded = JSON.stringify(request);
-    const row = this.db.prepare('SELECT request,work FROM connector_outgoing WHERE id=?').get(requestId);
+    const row = this.db.prepare('SELECT request,task FROM connector_outgoing WHERE id=?').get(requestId);
     if (row) {
       if (row.request !== encoded) throw new Error('Request ID already belongs to another outgoing task');
-      return row.work ? parseStored<Work>(String(row.work)) : undefined;
+      return row.task ? parseStored<Task>(String(row.task)) : undefined;
     }
     this.db.prepare('INSERT INTO connector_outgoing(id,request) VALUES (?,?)').run(requestId, encoded);
     return undefined;
   }
-  saveOutgoing(requestId: string, work: Work): void {
-    this.db.prepare('UPDATE connector_outgoing SET work=? WHERE id=?').run(JSON.stringify(work), requestId);
+  saveOutgoing(requestId: string, task: Task): void {
+    this.db.prepare('UPDATE connector_outgoing SET task=? WHERE id=?').run(JSON.stringify(task), requestId);
   }
   orderRequest(requestId: string, request: unknown): string | undefined {
     const encoded = JSON.stringify(request);
@@ -187,14 +264,14 @@ export class ConnectorJournal {
     this.db.prepare('INSERT INTO connector_control VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value')
       .run(control.deliveryId, JSON.stringify(control));
   }
-  queueReport(record: LocalWork, kind: Report['kind'], text: string, afterReport: Phase, observation?: unknown, eventId: string = randomUUID()): void {
+  queueReport(record: LocalTask, kind: Report['kind'], text: string, afterReport: Phase, observation?: unknown, eventId: string = randomUUID()): void {
     if (!record.claim || record.pendingReport) throw new Error('Preserve the pending report before queuing another');
     record.pendingReport = { claim: { id: record.claim.id, fence: record.claim.fence }, event_id: eventId, kind, text };
     record.afterReport = afterReport; record.phase = 'report_pending';
     record.lastObservation = observation === undefined ? undefined : digest(observation);
     this.save(record);
   }
-  sameObservation(record: LocalWork, observation: unknown): boolean { return record.lastObservation === digest(observation); }
+  sameObservation(record: LocalTask, observation: unknown): boolean { return record.lastObservation === digest(observation); }
   ingestRelay(value: RelayCommand): RelayRecord {
     const command = relayCommand(value);
     if (command.connection_id !== this.binding.connectionId) throw new Error('Relay belongs to another original connection');
@@ -222,8 +299,7 @@ export class ConnectorJournal {
     return this.db.prepare("SELECT value FROM connector_relay WHERE phase!='events_acked' ORDER BY created").all()
       .map(row => parseStored<RelayRecord>(String(row.value)));
   }
-  close(): void {
-    this.db.close();
+  private releaseProcessLock(): void {
     try {
       if (this.lock && existsSync(this.lock.path)) {
         privateFile(this.lock.path);
@@ -235,5 +311,8 @@ export class ConnectorJournal {
       if (this.lock?.fd !== undefined) closeSync(this.lock.fd);
       this.lock = undefined;
     }
+  }
+  close(): void {
+    try { this.db.close(); } finally { this.releaseProcessLock(); }
   }
 }

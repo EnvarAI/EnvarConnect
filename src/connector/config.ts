@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { privateJson, privateText } from './files.js';
 import { platformOrigin } from './origin.js';
-import { EnvarWorkClient } from './client.js';
+import { EnvarTaskClient } from './client.js';
 import { ConnectorJournal, type ConnectorBinding } from './state.js';
 import { HermesRuntimeAdapter } from '../adapters/hermes.js';
 import { OpenClawRuntimeAdapter } from '../adapters/openclaw.js';
@@ -45,7 +45,7 @@ export function normalizeConnector(config: ConnectorConfig): NormalizedConnector
   return { journal, receiver: { kind:'native-a2a', adapter:config.framework, cardUrl:config.runtime.cardUrl } };
 }
 export function connectorClient(directory: string, config = readConnector(directory)) {
-  return new EnvarWorkClient(config.origin, privateText(join(directory, `credential-${config.connectionId}.txt`)).trim(),
+  return new EnvarTaskClient(config.origin, privateText(join(directory, `credential-${config.connectionId}.txt`)).trim(),
     { allowLocalHttp: config.allowLocalHttp });
 }
 export function connectorJournal(directory: string, config = readConnector(directory)) {

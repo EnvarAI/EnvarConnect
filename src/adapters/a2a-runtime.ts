@@ -1,7 +1,7 @@
-import { AgentCard, SendMessageRequest, TaskState, Task } from '@a2a-js/sdk';
+import { AgentCard, SendMessageRequest, TaskState, Task as A2ATask } from '@a2a-js/sdk';
 import { digest } from '../shared/json.js';
 import type { RelayRuntime } from './types.js';
-import type { Work } from '../connector/contracts.generated.js';
+import type { Task } from '../connector/contracts.generated.js';
 import { NativeRequestNotStarted, NativeA2AClient, type NativeA2ASettings, type NativeTaskReference } from './native-a2a.js';
 import { RuntimeOutcomeUnknown, type RuntimeAdapter, type RuntimeObservation, type RuntimeReadiness, type RuntimeReference } from './types.js';
 
@@ -26,7 +26,7 @@ export class A2ARuntimeAdapter implements RuntimeAdapter {
       },
       read: async reference => {
         if (!('origin' in reference)) throw new Error('Use the original native A2A reference.');
-        return Task.toJSON((await this.client.read({ origin: reference.origin, interfaceUrl: reference.interface, taskId: reference.task_id, contextId: reference.context_id })).task) as Record<string, unknown>;
+        return A2ATask.toJSON((await this.client.read({ origin: reference.origin, interfaceUrl: reference.interface, taskId: reference.task_id, contextId: reference.context_id })).task) as Record<string, unknown>;
       },
     };
   }
@@ -47,8 +47,8 @@ export class A2ARuntimeAdapter implements RuntimeAdapter {
       throw new RuntimeOutcomeUnknown('native_reference_mismatch');
     return value as unknown as NativeTaskReference;
   }
-  private observed(task: Task, reference: NativeTaskReference): RuntimeObservation {
-    const wire = Task.toJSON(task) as { artifacts?: { parts?: unknown }[]; status?: { message?: { parts?: unknown } } };
+  private observed(task: A2ATask, reference: NativeTaskReference): RuntimeObservation {
+    const wire = A2ATask.toJSON(task) as { artifacts?: { parts?: unknown }[]; status?: { message?: { parts?: unknown } } };
     const textParts = (parts: unknown): string[] => Array.isArray(parts)
       ? parts.flatMap(part => part && typeof part === 'object' && typeof part.text === 'string' ? [part.text] : []) : [];
     const artifacts = (wire.artifacts ?? []).flatMap(artifact => textParts(artifact.parts));
@@ -63,11 +63,11 @@ export class A2ARuntimeAdapter implements RuntimeAdapter {
     if (state === 'completed' && !text.trim()) return { ...result, state: 'failed', errorCode: 'empty_native_result', text: 'The native Task completed without a text result.' };
     return { ...result, ...(text ? { text } : {}) };
   }
-  async start(work: Work, executionKey: string): Promise<RuntimeObservation> {
-    if (executionKey !== work.id) throw new Error('Use the original Envar work ID as execution key');
+  async start(task: Task, executionKey: string): Promise<RuntimeObservation> {
+    if (executionKey !== task.id) throw new Error('Use the original Envar task ID as execution key');
     try {
       const result = await this.client.send(SendMessageRequest.fromJSON({
-        message: { messageId: work.id, contextId: 'envar-' + work.context_id, role: 'ROLE_USER', parts: [{ text: work.request.message }] },
+        message: { messageId: task.id, contextId: 'envar-' + task.context_id, role: 'ROLE_USER', parts: [{ text: task.request.message }] },
         configuration: { returnImmediately: true },
       }));
       return this.observed(result.task, result.reference);

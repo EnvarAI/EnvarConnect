@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EnvarWorkClient, WorkApiError } from '../dist/connector/client.js';
+import { EnvarTaskClient, TaskApiError } from '../dist/connector/client.js';
 import { CONNECTOR_VERSION, runtimeReport } from '../dist/connector/runtime-report.js';
 
 const runtime = () => ({ adapter: 'hermes', runtimeVersion: '1.0', capabilities: { recover: true, input: false, cancel: false } });
@@ -17,7 +17,7 @@ test('legacy recover capability never implies durable native execution or result
 
 test('runtime diagnostics use the scoped RPC and retain demonstrated capabilities', async () => {
   const calls = [];
-  const client = new EnvarWorkClient('https://envar.example', token, { rpc: async (method, params) => {
+  const client = new EnvarTaskClient('https://envar.example', token, { rpc: async (method, params) => {
     calls.push({ method, params }); return {};
   } });
   assert.equal(await client.reportRuntime(runtime()), 'accepted');
@@ -26,10 +26,10 @@ test('runtime diagnostics use the scoped RPC and retain demonstrated capabilitie
 for (const status of [404, 405, 429, 500, 401, 403]) {
   test(`runtime reporting rejects ${status} without a compatibility fallback or retry`, async () => {
     let calls = 0;
-    const client = new EnvarWorkClient('https://envar.example', token, { rpc: async () => {
-      calls++; throw new WorkApiError(status, 'rpc_rejected');
+    const client = new EnvarTaskClient('https://envar.example', token, { rpc: async () => {
+      calls++; throw new TaskApiError(status, 'rpc_rejected');
     } });
-    await assert.rejects(client.reportRuntime(runtime()), WorkApiError);
+    await assert.rejects(client.reportRuntime(runtime()), TaskApiError);
     assert.equal(calls, 1);
   });
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { EnvarWorkClient, WorkApiError } from './client.js';
-import { ConnectorJournal, type LocalWork } from './state.js';
+import { EnvarTaskClient, TaskApiError } from './client.js';
+import { ConnectorJournal, type LocalTask } from './state.js';
 import type { RuntimeAdapter, RuntimeObservation } from '../adapters/types.js';
 import { NativeRequestNotStarted } from '../adapters/native-a2a.js';
 import { RuntimeControlUnsupported } from '../adapters/a2a-runtime.js';
@@ -9,54 +9,54 @@ import { RelayLoop, relayBlocksDispatch } from './relay-loop.js';
 import { ExecutionLifecycle } from './execution-lifecycle.js';
 
 const terminal = new Set(['completed', 'failed', 'canceled']);
-const claimValue = (record: LocalWork) => ({ id: record.claim!.id, fence: record.claim!.fence });
+const claimValue = (record: LocalTask) => ({ id: record.claim!.id, fence: record.claim!.fence });
 export class ConnectorLoop {
   private running = false;
   private verified = false;
   private lastGeneration = -1;
   private readonly relay?: RelayLoop;
-  constructor(readonly client: EnvarWorkClient, readonly runtime: RuntimeAdapter, readonly journal: ConnectorJournal) {
+  constructor(readonly client: EnvarTaskClient, readonly runtime: RuntimeAdapter, readonly journal: ConnectorJournal) {
     if (runtime.relay) this.relay = new RelayLoop(client, runtime.relay, journal);
   }
-  private async lease(record: LocalWork, recover = false): Promise<void> {
+  private async lease(record: LocalTask, recover = false): Promise<void> {
     if (!record.claim) return;
     const expires = Date.parse(record.claim.lease_until ?? '');
     const row = recover || !Number.isFinite(expires) || expires <= Date.now()
-      ? await this.client.recover(record.work.id, claimValue(record), { key: record.work.id })
-      : await this.client.renew(record.work.id, claimValue(record));
+      ? await this.client.recover(record.task.id, claimValue(record), { key: record.task.id })
+      : await this.client.renew(record.task.id, claimValue(record));
     record.claim = row.claim;
     if (row.status === 'unknown') record.lastObservation = undefined;
     this.journal.save(record);
   }
-  private execution(record: LocalWork): ExecutionLifecycle {
+  private execution(record: LocalTask): ExecutionLifecycle {
     return new ExecutionLifecycle(() => this.lease(record), 30000, () => {
       // Keep the actual native outcome. Reporting revalidates authority; never dispatch again.
       record.error = 'lease_unavailable'; this.journal.save(record);
     });
   }
-  private async flush(record: LocalWork): Promise<void> {
+  private async flush(record: LocalTask): Promise<void> {
     if (!record.pendingReport) return;
     let accepted;
     try {
-      accepted = await this.client.report(record.work.id, record.pendingReport);
+      accepted = await this.client.report(record.task.id, record.pendingReport);
     } catch (error) {
-      if (!(error instanceof WorkApiError) || error.status !== 409) throw error;
-      const current = await this.client.get(record.work.id);
+      if (!(error instanceof TaskApiError) || error.status !== 409) throw error;
+      const current = await this.client.get(record.task.id);
       if (terminal.has(current.status)) {
         record.phase = 'terminal'; record.error = 'terminal_report_conflict'; this.journal.save(record); return;
       }
       await this.lease(record, true);
       // The same exact event ID/content is retried; a lost successful response cannot duplicate an event.
-      accepted = await this.client.report(record.work.id, record.pendingReport);
+      accepted = await this.client.report(record.task.id, record.pendingReport);
     }
     record.phase = terminal.has(accepted.status) ? 'terminal' : record.afterReport!; delete record.pendingReport; delete record.afterReport;
     this.journal.save(record);
   }
-  private async observed(record: LocalWork, observation: RuntimeObservation): Promise<void> {
+  private async observed(record: LocalTask, observation: RuntimeObservation): Promise<void> {
     record.reference = observation.reference; record.observation = observation; this.journal.save(record);
     if (this.journal.sameObservation(record, observation)) return;
     const state = observation.state;
-    const cancelRequested = state === 'canceled' ? (await this.client.get(record.work.id)).cancel_requested_at : null;
+    const cancelRequested = state === 'canceled' ? (await this.client.get(record.task.id)).cancel_requested_at : null;
     const kind = state === 'working' ? 'progress' : state === 'canceled' ? (cancelRequested ? 'cancel_confirmed' : 'failed')
       : state === 'unknown' ? 'outcome_unknown' : state;
     const text = observation.text || ({ working: 'Native task accepted.', input_required: 'The native Agent needs input.',
@@ -67,19 +67,19 @@ export class ConnectorLoop {
     this.journal.queueReport(record, kind, text, next, observation);
     await this.flush(record);
   }
-  private async advance(record: LocalWork): Promise<void> {
+  private async advance(record: LocalTask): Promise<void> {
     if (record.pendingReport) { await this.flush(record); return; }
     if (record.reference && record.observation && terminal.has(record.observation.state)) {
       await this.observed(record, record.observation); return;
     }
     if (record.phase === 'prepared') {
       try {
-        const row = await this.client.claim(record.work.id, record.claimRequestId);
+        const row = await this.client.claim(record.task.id, record.claimRequestId);
         if (terminal.has(row.status)) { record.phase = 'terminal'; this.journal.save(record); return; }
         record.claim = row.claim; record.phase = 'claimed'; this.journal.save(record);
       } catch (error) {
-        if (!(error instanceof WorkApiError) || error.status !== 409) throw error;
-        const current = await this.client.get(record.work.id);
+        if (!(error instanceof TaskApiError) || error.status !== 409) throw error;
+        const current = await this.client.get(record.task.id);
         if (terminal.has(current.status)) { record.phase = 'terminal'; this.journal.save(record); }
         return;
       }
@@ -87,20 +87,20 @@ export class ConnectorLoop {
     if (record.phase === 'claimed') {
       // A claim that expired before admission can be reacquired; never reuse its old fence to start.
       if (Date.parse(record.claim!.lease_until ?? '') <= Date.now()) {
-        const current = await this.client.get(record.work.id);
+        const current = await this.client.get(record.task.id);
         if (current.status === 'queued') {
           record.claimRequestId = randomUUID(); record.phase = 'prepared'; delete record.claim; this.journal.save(record); return;
         }
         if (terminal.has(current.status)) { record.phase = 'terminal'; this.journal.save(record); return; }
         await this.lease(record, true);
       }
-      // Recheck local execution configuration before admitting/capturing this work.
+      // Recheck local execution configuration before admitting/capturing this task.
       await this.runtime.probe();
       let admitted;
-      try { admitted = await this.client.start(record.work.id, claimValue(record), { key: record.work.id }); }
+      try { admitted = await this.client.start(record.task.id, claimValue(record), { key: record.task.id }); }
       catch (error) {
-        if (error instanceof WorkApiError && error.status === 409) {
-          const current = await this.client.get(record.work.id);
+        if (error instanceof TaskApiError && error.status === 409) {
+          const current = await this.client.get(record.task.id);
           if (terminal.has(current.status)) { record.phase = 'terminal'; this.journal.save(record); return; }
         }
         throw error;
@@ -112,7 +112,7 @@ export class ConnectorLoop {
       try {
         const dispatch = this.execution(record).prepareDispatch(() => {
           record.phase = 'dispatching'; this.journal.save(record);
-        }, () => this.runtime.start(record.work, record.work.id));
+        }, () => this.runtime.start(record.task, record.task.id));
         await this.observed(record, await dispatch());
       }
       catch (error) {
@@ -152,7 +152,8 @@ export class ConnectorLoop {
       if (!this.verified) {
         const status = await this.client.status();
         if (status.id !== this.journal.binding.connectionId || status.agent_id !== this.journal.binding.agentId ||
-            this.runtime.key !== this.journal.binding.adapter) throw new Error('Restore the original Agent/runtime binding');
+            status.adapter !== this.journal.binding.adapter || this.runtime.key !== this.journal.binding.adapter)
+          throw new Error('Restore the original Agent/runtime binding');
         const readiness = await this.runtime.probe();
         await this.client.reportRuntime(readiness);
         this.verified = true;
@@ -167,7 +168,7 @@ export class ConnectorLoop {
         if (inbox.next_cursor <= after) throw new Error('Inbox cursor did not advance');
         after = inbox.next_cursor;
       }
-      // Resume admitted work and reports before claiming new work. One native execution at a time.
+      // Resume admitted task and reports before claiming new task. One native execution at a time.
       const active = this.journal.pending().filter(record => record.phase !== 'prepared');
       for (const record of active) await this.advance(record);
       await this.relay?.tick(!this.journal.pending().some(record => record.phase !== 'prepared'), sync);
@@ -176,8 +177,8 @@ export class ConnectorLoop {
         if (next) await this.advance(next);
       }
       for (const delivery of this.journal.deliveries()) {
-        const record = this.journal.get(delivery.work.id);
-        if (delivery.kind === 'work' && record?.phase !== 'terminal') continue;
+        const record = this.journal.get(delivery.task.id);
+        if (delivery.kind === 'task' && record?.phase !== 'terminal') continue;
         if (['input', 'cancel'].includes(delivery.kind) && record?.phase !== 'terminal') {
           if (!record?.reference || record.pendingReport) continue;
           const control = this.journal.control(delivery.id);
@@ -227,7 +228,7 @@ export class ConnectorLoop {
           }
         } catch (error) {
           onError(error);
-          if (error instanceof WorkApiError && [401, 403].includes(error.status)) throw error;
+          if (error instanceof TaskApiError && [401, 403].includes(error.status)) throw error;
           this.lastGeneration = -1;
           try { await sleep(delay + Math.random() * delay, undefined, { signal }); }
           catch { if (!signal.aborted) throw new Error('Connector reconnect interrupted'); }

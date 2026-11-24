@@ -24,7 +24,7 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci --ignore-scripts
-      - run: node scripts/generate-work-contract.mjs --check
+      - run: node scripts/generate-task-contract.mjs --check
       - run: npm test
       - name: Build and verify the actual npm tarball
         run: |

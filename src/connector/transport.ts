@@ -2,9 +2,9 @@
 import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 
-export class WorkApiError extends Error {
+export class TaskApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, public readonly retryAfter = 0) {
-    super(`Envar operation failed (${status}, ${code}). Read the original work before retrying.`);
+    super(`Envar operation failed (${status}, ${code}). Read the original task before retrying.`);
   }
 }
 
@@ -22,13 +22,13 @@ export class SocketTransport {
   private changed() { this.generation++; for (const listener of this.listeners) listener(); }
   private async connect(): Promise<void> {
     if (this.closed) throw new Error('Connect transport is closed');
-    if (this.denied) throw new WorkApiError(403, 'connection_revoked');
+    if (this.denied) throw new TaskApiError(403, 'connection_revoked');
     if (this.socket?.readyState === WebSocket.OPEN) return;
     if (this.opening) return this.opening;
     this.opening = new Promise<void>((resolve, reject) => {
       const url = new URL('/api/v1/connect', this.origin);
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-      const socket = new WebSocket(url, 'envar.connect.v1', {
+      const socket = new WebSocket(url, 'envar.connect.v2', {
         headers: { Authorization: `Bearer ${this.token}` }, followRedirects: false,
         handshakeTimeout: 15000, maxPayload: 6 * 1024 * 1024, perMessageDeflate: false,
       });
@@ -46,20 +46,20 @@ export class SocketTransport {
         if (value.error) {
           const status = Number(value.error.data?.status ?? value.error.code) || 500;
           if (value.error.data?.terminal === true) this.denied = true;
-          request.reject(new WorkApiError(status, 'rpc_rejected'));
+          request.reject(new TaskApiError(status, 'rpc_rejected'));
         } else if (Object.hasOwn(value, 'result')) request.resolve(value.result);
         else request.reject(new Error('Invalid Connect response; preserve the original operation'));
       });
       socket.once('unexpected-response', (_request, response) => {
         if ([401, 403].includes(response.statusCode ?? 0)) this.denied = true;
         response.resume(); socket.terminate();
-        reject(new WorkApiError(response.statusCode ?? 503, 'websocket_rejected'));
+        reject(new TaskApiError(response.statusCode ?? 503, 'websocket_rejected'));
       });
       socket.on('error', () => reject(new Error('Connect WebSocket unavailable')));
       socket.once('close', code => {
         if (code === 1008) this.denied = true;
         if (this.socket === socket) this.socket = undefined;
-        const error = this.denied ? new WorkApiError(403, 'connection_revoked')
+        const error = this.denied ? new TaskApiError(403, 'connection_revoked')
           : new Error('Connect disconnected; the original operation may have committed');
         reject(error);
         for (const request of this.pending.values()) { clearTimeout(request.timer); request.reject(error); }

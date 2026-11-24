@@ -121,7 +121,7 @@ export async function runUnifiedCli(args: string[]): Promise<void> {
       print({ status:'starting', agent_id:config.agentId, connection_id:config.connectionId,
         next:'Keep this process and the native gateway running. Status in Envar updates after contact and a real test.' });
       try { await new ConnectorLoop(client,runtime,journal).run(controller.signal,error=>{
-        console.error(error instanceof Error ? error.message : 'Connector request failed; original work is preserved');
+        console.error(error instanceof Error ? error.message : 'Connector request failed; original task is preserved');
       }); } finally { await runtime.close(); journal.close(); }
     } },
     doctor: { usage:'doctor --agent UUID', run: async () => {

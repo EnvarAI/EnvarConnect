@@ -7,13 +7,13 @@ import { tmpdir } from 'node:os';
 import { ConnectorJournal } from '../dist/connector/state.js';
 import { RelayLoop } from '../dist/connector/relay-loop.js';
 import { digest } from '../dist/shared/json.js';
-import { WorkApiError } from '../dist/connector/client.js';
+import { TaskApiError } from '../dist/connector/client.js';
 
 const binding = { origin: 'https://envar.test', agentId: randomUUID(), connectionId: randomUUID(), adapter: 'hermes', cardUrl: 'http://127.0.0.1:8080/card' };
 const reference = { origin: binding.cardUrl, interface: 'http://127.0.0.1:8080/rpc', task_id: 'native-original', context_id: 'native-context' };
 const task = state => ({ id: reference.task_id, contextId: reference.context_id, status: { state }, artifacts: [{ artifactId: 'original', parts: [{ text: 'Original delivery' }] }] });
 function fixture(path = ':memory:') {
-  const command = { relay_version: '1', command_id: randomUUID(), connection_id: binding.connectionId, binding_id: randomUUID(), work_id: randomUUID(), sequence: 1,
+  const command = { relay_version: '1', command_id: randomUUID(), connection_id: binding.connectionId, binding_id: randomUUID(), task_id: randomUUID(), sequence: 1,
     kind: 'send', control_generation: 0, a2a: { method: 'SendMessage', params: { message: { messageId: 'client:not-uuid', role: 'ROLE_USER', parts: [{ text: 'Original task' }] } } },
     state: 'pending', claim: null, admission_ref: null, last_event_sequence: 0, lease_until: null, result_digest: '' };
   command.request_digest = digest({ kind: command.kind, method: command.a2a.method, params: command.a2a.params, binding: command.binding_id });
@@ -165,7 +165,7 @@ test('proven native preparation failure is retried before admission without a Se
 test('permanently rejected payload is retained locally while bounded uncertainty allows original reads', async () => {
   const f = fixture(); const report = f.client.relayEvent; let reject = true;
   f.client.relayEvent = async (id, value) => {
-    if (reject && value.kind === 'task_snapshot') { reject = false; throw new WorkApiError(400, 'invalid_payload'); }
+    if (reject && value.kind === 'task_snapshot') { reject = false; throw new TaskApiError(400, 'invalid_payload'); }
     return report(id, value);
   };
   try {
@@ -183,7 +183,7 @@ test('permanently rejected payload is retained locally while bounded uncertainty
 test('unknown outcome ACK failure is retried even without a native reference', async () => {
   const f = fixture(); const ack = f.client.relayAck; let fail = true;
   f.runtime.send = async () => { f.stats.sends++; throw new Error('Unknown POST'); };
-  f.client.relayAck = async (...args) => { if (fail) { fail = false; throw new WorkApiError(503, 'unavailable'); } return ack(...args); };
+  f.client.relayAck = async (...args) => { if (fail) { fail = false; throw new TaskApiError(503, 'unavailable'); } return ack(...args); };
   try {
     await assert.rejects(() => f.loop.tick(true));
     await f.loop.tick(true); await f.loop.tick(true);

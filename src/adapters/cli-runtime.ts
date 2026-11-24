@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { digest } from '../shared/json.js';
 import { privateDirectory, privateJson, privateText, writePrivateJson } from '../connector/files.js';
 import { RuntimeControlUnsupported } from './a2a-runtime.js';
-import type { Work } from '../connector/contracts.generated.js';
+import type { Task } from '../connector/contracts.generated.js';
 import type { RelayRuntime, RuntimeAdapter, RuntimeObservation, RuntimeReadiness, RuntimeReference } from './types.js';
 import type { RelayReference } from '../connector/relay-types.js';
 import { verifyServiceProfile, type ServiceProfile } from './service-profile.js';
@@ -54,8 +54,8 @@ export class CliRuntimeAdapter implements RuntimeAdapter {
         throw new Error('This CLI adapter accepts only verified text messages.');
       const contextId = message.contextId ?? execution.contextId;
       if (!uuid.test(contextId)) throw new Error('Use the original local execution context.');
-      const observation = await this.start({ id: execution.workId, request: { message: message.parts.map(p=>p.text).join('\n'), tool:'', arguments:{} } } as Work, execution.workId);
-      const reference: RelayReference = { kind:'local_cli_execution', adapter:this.key, binding_digest:this.binding, task_id:execution.workId, context_id:contextId };
+      const observation = await this.start({ id: execution.taskId, request: { message: message.parts.map(p=>p.text).join('\n'), tool:'', arguments:{} } } as Task, execution.taskId);
+      const reference: RelayReference = { kind:'local_cli_execution', adapter:this.key, binding_digest:this.binding, task_id:execution.taskId, context_id:contextId };
       return { task:this.task(observation,reference), reference };
     };
     this.relay = { version:'2', cardDigest:async()=>this.binding, send,
@@ -91,9 +91,9 @@ export class CliRuntimeAdapter implements RuntimeAdapter {
     return join(this.directory, 'executions', key);
   }
   private reference(key: string, binding = this.binding): RuntimeReference { return { adapter: this.key, version: 1, value: { execution_key: key, binding } }; }
-  async start(work: Work, executionKey: string): Promise<RuntimeObservation> {
-    if (work.id !== executionKey) throw new Error('Execute the original work only.');
-    const folder = this.execution(executionKey), path = join(folder, 'result.json'), input = digest(work.request);
+  async start(task: Task, executionKey: string): Promise<RuntimeObservation> {
+    if (task.id !== executionKey) throw new Error('Execute the original task only.');
+    const folder = this.execution(executionKey), path = join(folder, 'result.json'), input = digest(task.request);
     privateDirectory(folder);
     if (existsSync(path)) {
       const original = privateJson<CliExecutionRecord>(path);
@@ -109,7 +109,7 @@ export class CliRuntimeAdapter implements RuntimeAdapter {
     // still detects a child that never starts; the exclusive intent forbids replay.
     writePrivateJson(path, { version: 1, key: executionKey, adapter: this.key, binding: this.binding,
       requestDigest: input, state: 'working', startedAt, observedAt: startedAt } satisfies CliExecutionRecord);
-    writePrivateJson(join(folder, 'request.json'), { config: this.config, runtime: this.key, message: work.request.message });
+    writePrivateJson(join(folder, 'request.json'), { config: this.config, runtime: this.key, message: task.request.message });
     const child = spawn(process.execPath, [fileURLToPath(new URL('./cli-worker.js', import.meta.url)), folder], {
       detached: true, stdio: 'ignore', env: { ...process.env, ENVAR_EXECUTION_CHILD: '1' },
     });

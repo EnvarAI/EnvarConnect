@@ -11,12 +11,12 @@ Start with the existing interfaces, rather than inventing another task protocol:
 | `src/connector/execution-lifecycle.ts` | Shared heartbeat and durable one-dispatch barrier |
 | `src/connector/config.ts` | Current client/native/CLI configuration validation |
 | `src/connector/state.ts` | Durable journal and original runtime binding |
-| `contracts/agent-work/v1/schema.json` | Public work/report contract |
+| `contracts/agent-task/v2/schema.json` | Public task/report contract |
 
 ## Adapter contract
 
 - `probe()` reports the runtime and capabilities it can actually demonstrate.
-- `start(work, executionKey)` receives the original work ID after durable admission.
+- `start(task, executionKey)` receives the original task ID after durable admission.
   Call the native operation once. Do not retry an uncertain POST.
 - `observe(reference)` only reads the original Task/session handle. The reference
   must bind the original runtime and must contain no credential.
@@ -28,7 +28,7 @@ Start with the existing interfaces, rather than inventing another task protocol:
 Do not reuse display names as authorization, move model/provider credentials
 into the platform, or create a substitute execution when the original is unknown.
 
-## Work locally without a production account
+## Develop locally without a production account
 
 ```sh
 npm ci --ignore-scripts
@@ -39,7 +39,7 @@ node --test test/connector-adapters.test.mjs test/connector-loop.test.mjs
 
 These tests run actual local transports and journals against isolated fixtures.
 They require no Envar account or model payment. They are protocol tests, not a
-claim that a public WorkService server or a real model ran.
+claim that a public Task server or a real model ran.
 
 Use the current fixtures in those files as the reference for a new adapter.
 An implementation should show:
@@ -51,7 +51,7 @@ An implementation should show:
 5. Result delivery persists before acknowledgement.
 6. Unsupported input/cancel is reported honestly.
 7. The original journal dispatch marker is committed before native execution;
-   existing Work v1 admission and original-task recovery ordering stay unchanged.
+   existing Task v2 admission and original-task recovery ordering stay unchanged.
 
 For a real native integration, use an isolated profile you own and document its
 exact version. Keep keys, prompts, private files and personal profiles out of the

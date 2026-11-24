@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { RelayRuntime } from '../adapters/types.js';
 import { digest } from '../shared/json.js';
-import { EnvarWorkClient, WorkApiError } from './client.js';
+import { EnvarTaskClient, TaskApiError } from './client.js';
 import type { ConnectorJournal } from './state.js';
 import type { RelayEvent, RelayRecord } from './relay-types.js';
 import { ExecutionLifecycle } from './execution-lifecycle.js';
@@ -15,7 +15,7 @@ export const relayBlocksDispatch = (record: RelayRecord): boolean =>
 /** Uses the existing journal and process lock; unknown sends never get another POST. */
 export class RelayLoop {
   private enabled = false;
-  constructor(readonly client: EnvarWorkClient, readonly runtime: RelayRuntime, readonly journal: ConnectorJournal) {}
+  constructor(readonly client: EnvarTaskClient, readonly runtime: RelayRuntime, readonly journal: ConnectorJournal) {}
   private queue(record: RelayRecord, kind: RelayEvent['kind'], payload: Record<string, unknown>, observation?: number): void {
     if (!record.command.claim) throw new Error('The original relay claim is required');
     record.pending.push({ claim: record.command.claim, event_id: randomUUID(), sequence: record.nextEvent++,
@@ -52,7 +52,7 @@ export class RelayLoop {
       let receipt;
       try { receipt = await this.client.relayEvent(record.command.command_id, event); }
       catch (error) {
-        if (!(error instanceof WorkApiError) || ![400, 413].includes(error.status) || event.kind === 'outcome_unknown') throw error;
+        if (!(error instanceof TaskApiError) || ![400, 413].includes(error.status) || event.kind === 'outcome_unknown') throw error;
         // A confirmed schema/size rejection did not commit this event. Keep
         // the rejected payload locally and report a bounded uncertainty at
         // the same sequence so original Task reads can continue.
@@ -127,7 +127,7 @@ export class RelayLoop {
   private async claim(record: RelayRecord): Promise<boolean> {
     try { record.command = await this.client.relayOperation(record.command.command_id, 'claim', { request_id: record.claimRequestId }); }
     catch (error) {
-      if (!(error instanceof WorkApiError) || error.status !== 409) throw error;
+      if (!(error instanceof TaskApiError) || error.status !== 409) throw error;
       const current = await this.client.relayCommand(record.command.command_id);
       if (current.request_digest !== record.command.request_digest) throw new Error('The original relay command changed');
       if (current.state !== 'canceled') throw error;
@@ -149,7 +149,7 @@ export class RelayLoop {
   }
   private async advance(record: RelayRecord): Promise<void> {
     if (record.command.relay_version !== (this.runtime.version ?? '1')) throw new Error('Preserve the original negotiated relay version.');
-    const execution = { workId: record.command.work_id, contextId: record.command.binding_id };
+    const execution = { taskId: record.command.task_id, contextId: record.command.binding_id };
     let preparedDispatch: (() => ReturnType<RelayRuntime['send']>) | undefined;
     if (record.command.kind !== 'send') throw new Error('This Connector cannot execute unverified native controls');
     if (record.pending.length) { await this.flush(record); await this.acknowledge(record); return; }
@@ -166,12 +166,12 @@ export class RelayLoop {
       try {
         record.command = await this.client.relayOperation(record.command.command_id, 'admit', { claim: record.command.claim, execution_key: record.executionKey });
       } catch (error) {
-        if (!(error instanceof WorkApiError) || error.status !== 409) throw error;
+        if (!(error instanceof TaskApiError) || error.status !== 409) throw error;
         // Admission may have succeeded before its response was lost. Recover
         // that exact execution; a changed key/fence cannot be substituted.
         try { await this.lease(record); }
         catch (recoveryError) {
-          if (!(recoveryError instanceof WorkApiError) || recoveryError.status !== 409) throw recoveryError;
+          if (!(recoveryError instanceof TaskApiError) || recoveryError.status !== 409) throw recoveryError;
           // A pre-admission lease may expire. The server permits a new fence
           // only while this same command has never crossed admission.
           record.claimRequestId = randomUUID(); this.journal.saveRelay(record);
@@ -239,7 +239,7 @@ export class RelayLoop {
     if (sync || !this.enabled) {
       try { this.enabled = await this.client.relayHello(await this.runtime.cardDigest(), this.runtime.version ?? '1'); }
       catch (error) {
-        if (error instanceof WorkApiError && [401, 403].includes(error.status)) throw error;
+        if (error instanceof TaskApiError && [401, 403].includes(error.status)) throw error;
         this.enabled = false; handshakeError = error;
       }
     }

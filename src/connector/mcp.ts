@@ -1,18 +1,18 @@
 /** Native agents receive scoped outgoing tools; the Connector owns incoming claims/execution. */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import type { EnvarWorkClient } from './client.js';
+import type { EnvarTaskClient } from './client.js';
 import type { ConnectorJournal } from './state.js';
 
 const identifier = z.string().uuid();
 const result = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }], structuredContent: value as Record<string, unknown> });
-export function connectorMcp(client: EnvarWorkClient, journal: ConnectorJournal, scopes: readonly string[]): McpServer {
+export function connectorMcp(client: EnvarTaskClient, journal: ConnectorJournal, scopes: readonly string[]): McpServer {
   const server = new McpServer({ name: 'envar-connector', version: '1.0.0' }, { instructions:
     'This connection identifies one Envar Agent. Use list_peers to find explicitly permitted recipients. ' +
     'Persist a UUID request_id before sending. Retry an interrupted send with the SAME request_id and content. ' +
-    'After sending, use wait_work/get_work until the original work completes, fails, needs input or is unknown. ' +
+    'After sending, use wait_task/get_task until the original task completes, fails, needs input or is unknown. ' +
     'Do not finish the current task with an acceptance notice when a final result is requested. ' +
-    'Use provide_input on the original work when it asks a question. Never create replacement work to recover a slow or unknown result. ' +
+    'Use provide_input on the original task when it asks a question. Never create a replacement task to recover a slow or unknown result. ' +
     'For services, find the exact published revision and quote once. confirm_order selects the current owner-approved Agent budget on compatible servers. ' +
     'Read list_spending_grants for all-services or selected-services scope, limits and expiry; legacy grants bind exact revisions. If approval_required is returned, explain the reason and give the owner that original order link. Connection permission alone cannot spend. ' +
     'Use wait_order/get_order until actual delivery; list_orders recovers original quotes after a restart. ' +
@@ -37,30 +37,30 @@ export function connectorMcp(client: EnvarWorkClient, journal: ConnectorJournal,
     server.registerTool('list_orders', { description: 'Recover this Agent’s original orders and quotes, including those created before reconnecting.',
       inputSchema: z.object({}), annotations: read,
     }, wrap(async () => client.orders()));
-    server.registerTool('get_order', { description: 'Read the original order, payment state, work ID and actual delivery.',
+    server.registerTool('get_order', { description: 'Read the original order, payment state, task ID and actual delivery.',
       inputSchema: z.object({ order_id: identifier }), annotations: read,
     }, wrap(async args => client.order(args.order_id)));
-    server.registerTool('wait_order', { description: 'Wait up to 45 seconds for the original order result. Continue the same order when still queued/working.',
+    server.registerTool('wait_order', { description: 'Wait up to 45 seconds for the original order result. Continue the same order when funded or working.',
       inputSchema: z.object({ order_id: identifier, seconds: z.number().int().min(1).max(45).default(30) }), annotations: read,
     }, wrap(async (args, extra) => {
       return client.waitResult(() => client.order(args.order_id),
-        order => !['queued', 'dispatching', 'working'].includes(order.state), args.seconds, extra.signal);
+        order => !['funded', 'working'].includes(order.state), args.seconds, extra.signal);
     }));
-    server.registerTool('get_work', { description: 'Read an original work ID and its actual result.',
-      inputSchema: z.object({ work_id: identifier }), annotations: read,
-    }, wrap(async args => client.get(args.work_id)));
-    server.registerTool('wait_work', { description: 'Wait up to 45 seconds for the original result. Continue reading the same work ID when still working.',
-      inputSchema: z.object({ work_id: identifier, seconds: z.number().int().min(1).max(45).default(30) }), annotations: read,
+    server.registerTool('get_task', { description: 'Read an original task ID and its actual result.',
+      inputSchema: z.object({ task_id: identifier }), annotations: read,
+    }, wrap(async args => client.get(args.task_id)));
+    server.registerTool('wait_task', { description: 'Wait up to 45 seconds for the original result. Continue reading the same task ID when still working.',
+      inputSchema: z.object({ task_id: identifier, seconds: z.number().int().min(1).max(45).default(30) }), annotations: read,
     }, wrap(async (args, extra) => {
-      return client.waitResult(() => client.get(args.work_id),
-        work => !['queued', 'dispatching', 'working'].includes(work.status), args.seconds, extra.signal);
+      return client.waitResult(() => client.get(args.task_id),
+        task => !['queued', 'dispatching', 'working'].includes(task.status), args.seconds, extra.signal);
     }));
     server.registerTool('list_results', { description: 'Read this Agent’s persisted result deliveries, including results received while disconnected.',
       inputSchema: z.object({}), annotations: read,
     }, wrap(async () => ({ items: journal.results() })));
   }
   if (scopes.includes('work:send')) {
-    server.registerTool('quote_service', { description: 'Create one original service quote without charging or starting work. Persist request_id and reuse it after a lost response.',
+    server.registerTool('quote_service', { description: 'Create one original service quote without charging or starting a task. Persist request_id and reuse it after a lost response.',
       inputSchema: z.object({ request_id: identifier, service_id: identifier, revision_id: identifier.optional(),
         offer_id: z.string().min(1).max(64), payment_method: z.enum(['free', 'envar_balance']), input: z.record(z.string(), z.unknown()) }),
       annotations: write,
@@ -81,7 +81,7 @@ export function connectorMcp(client: EnvarWorkClient, journal: ConnectorJournal,
     server.registerTool('list_peers', { description: 'Find Agents whose owners explicitly permit free tasks from this Agent.',
       inputSchema: z.object({}), annotations: read,
     }, wrap(async () => client.peers()));
-    server.registerTool('send_message', { description: 'Send free work once. Persist request_id; reuse it with identical content after a lost response. Then read the original result.',
+    server.registerTool('send_message', { description: 'Send a free task once. Persist request_id; reuse it with identical content after a lost response. Then read the original result.',
       inputSchema: z.object({ target_agent_id: identifier, message: z.string().min(1).max(32000),
         request_id: identifier, context_id: identifier.optional() }), annotations: write,
     }, wrap(async args => {
@@ -91,12 +91,12 @@ export function connectorMcp(client: EnvarWorkClient, journal: ConnectorJournal,
       if (prior) return client.get(prior.id);
       const sent = await client.send(body, args.request_id); journal.saveOutgoing(args.request_id, sent); return sent;
     }));
-    server.registerTool('provide_input', { description: 'Answer an input request on the original work; this does not create a new task.',
-      inputSchema: z.object({ work_id: identifier, text: z.string().min(1).max(32000), request_id: identifier }), annotations: write,
-    }, wrap(async args => client.provideInput(args.work_id, args.text, args.request_id)));
-    server.registerTool('cancel_work', { description: 'Request cancellation of original work. After execution starts, wait for the actual outcome.',
-      inputSchema: z.object({ work_id: identifier, request_id: identifier }), annotations: write,
-    }, wrap(async args => client.cancel(args.work_id, args.request_id)));
+    server.registerTool('provide_input', { description: 'Answer an input request on the original task; this does not create a new task.',
+      inputSchema: z.object({ task_id: identifier, text: z.string().min(1).max(32000), request_id: identifier }), annotations: write,
+    }, wrap(async args => client.provideInput(args.task_id, args.text, args.request_id)));
+    server.registerTool('cancel_task', { description: 'Request cancellation of original task. After execution starts, wait for the actual outcome.',
+      inputSchema: z.object({ task_id: identifier, request_id: identifier }), annotations: write,
+    }, wrap(async args => client.cancel(args.task_id, args.request_id)));
   }
   return server;
 }
