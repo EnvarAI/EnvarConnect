@@ -20,14 +20,14 @@ function fixture(t) {
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(), cancel_requested_at: null, deadline_at: new Date(Date.now() + 86400000).toISOString() };
   const delivery = { id: 1, kind: 'task', task, event: { status: 'queued' } };
   let claim, reference;
-  const calls = { claim: [], start: 0, report: [], ack: [], nativeStart: 0, nativeRead: 0, cancel: 0 };
-  const faults = { startResponseLost: false, reportResponseLost: false, nativeResponseLost: false, ackLost: false, cancelBeforeStart: false };
+  const calls = { get: 0, claim: [], start: 0, report: [], ack: [], ackAttempts: 0, nativeStart: 0, nativeRead: 0, cancel: 0, provideInput: 0 };
+  const faults = { startResponseLost: false, reportResponseLost: false, nativeResponseLost: false, ackLost: false, ackResponseLostAfterCommit: false, cancelBeforeStart: false };
   const reports = new Map(); const state = { native: 'working', deliveries: [delivery] };
   const client = {
     reportRuntime: async () => 'accepted',
     status: async () => ({ id: binding.connectionId, agent_id: binding.agentId, mode: 'inbox', status: 'active', adapter: binding.adapter }),
     inbox: async () => ({ items: state.deliveries.filter(d => !calls.ack.includes(d.id)), next_cursor: null }),
-    get: async () => structuredClone(task),
+    get: async () => { calls.get++; return structuredClone(task); },
     claim: async (_id, key) => {
       calls.claim.push(key); claim ??= { id: key, fence: 1, lease_until: new Date(Date.now() + 120000).toISOString() };
       return { ...structuredClone(task), claim, execution_ref: {} };
@@ -56,7 +56,12 @@ function fixture(t) {
       if (faults.reportResponseLost) { faults.reportResponseLost = false; throw new Error('report receipt lost'); }
       return structuredClone(task);
     },
-    acknowledge: async id => { if (faults.ackLost) { faults.ackLost = false; throw new Error('ack lost'); } calls.ack.push(id); },
+    acknowledge: async id => {
+      calls.ackAttempts++;
+      if (faults.ackLost) { faults.ackLost = false; throw new Error('ack lost'); }
+      if (!calls.ack.includes(id)) calls.ack.push(id);
+      if (faults.ackResponseLostAfterCommit) { faults.ackResponseLostAfterCommit = false; throw new Error('ack response lost'); }
+    },
   };
   const runtime = {
     key: 'hermes', probe: async () => ({ adapter: 'hermes', runtimeVersion: 'test', capabilities: { recover: true, input: false, cancel: false } }),
@@ -71,7 +76,7 @@ function fixture(t) {
       return { reference, state: state.native, text: 'Original native result' };
     },
     cancel: async () => { calls.cancel++; throw new RuntimeControlUnsupported(); },
-    provideInput: async () => { throw new RuntimeControlUnsupported(); }, close: async () => {},
+    provideInput: async () => { calls.provideInput++; throw new RuntimeControlUnsupported(); }, close: async () => {},
   };
   const path = join(dir, 'connector.sqlite3');
   let journal = new ConnectorJournal(path, binding), loop = new ConnectorLoop(client, runtime, journal);
@@ -159,6 +164,61 @@ test('interrupted native dispatch marker cannot be turned back into a fresh disp
 test('cancellation between claim and start never reaches the native runtime', async t => {
   const f = fixture(t); f.faults.cancelBeforeStart = true;
   await f.loop.tick(); assert.equal(f.calls.nativeStart, 0); assert.equal(f.journal.get(f.task.id).phase, 'terminal');
+});
+test('pre-admission cancel with no local record ACKs only the live canceled Task', async t => {
+  const f = fixture(t);
+  f.state.deliveries = [{ id: 243, kind: 'cancel', task: structuredClone(f.task), event: { status: 'queued' } }];
+  f.task.status = 'canceled'; // The durable delivery snapshot remains queued.
+  await f.loop.tick();
+  assert.equal(f.calls.get, 1); assert.deepEqual(f.calls.ack, [243]);
+  assert.deepEqual(f.journal.deliveries(), []); assert.equal(f.journal.get(f.task.id), undefined);
+  assert.equal(f.calls.claim.length, 0); assert.equal(f.calls.start, 0); assert.equal(f.calls.nativeStart, 0);
+  assert.equal(f.calls.cancel, 0); assert.equal(f.calls.provideInput, 0); assert.equal(f.calls.report.length, 0);
+  f.reopen(); await f.loop.tick();
+  assert.equal(f.calls.get, 1); assert.deepEqual(f.calls.ack, [243]);
+});
+for (const status of ['completed', 'failed']) {
+  test(`orphan input control ACKs an authoritative ${status} Task without native execution`, async t => {
+    const f = fixture(t);
+    f.state.deliveries = [{ id: 244, kind: 'input', task: structuredClone(f.task), event: { text: 'stale input' } }];
+    f.task.status = status;
+    await f.loop.tick();
+    assert.deepEqual(f.calls.ack, [244]); assert.equal(f.journal.get(f.task.id), undefined);
+    assert.equal(f.calls.provideInput, 0); assert.equal(f.calls.nativeStart, 0);
+  });
+}
+for (const status of ['working', 'unknown']) {
+  test(`orphan control with a ${status} live Task remains unacked across restart`, async t => {
+    const f = fixture(t);
+    f.state.deliveries = [{ id: 243, kind: 'cancel', task: structuredClone(f.task), event: { status: 'canceled' } }];
+    f.task.status = status;
+    await f.loop.tick(); f.reopen(); await f.loop.tick();
+    assert.equal(f.calls.get, 2); assert.deepEqual(f.calls.ack, []);
+    assert.equal(f.journal.deliveries().length, 1); assert.equal(f.journal.get(f.task.id), undefined);
+    assert.equal(f.calls.nativeStart, 0); assert.equal(f.calls.cancel, 0); assert.equal(f.calls.report.length, 0);
+  });
+}
+test('lost orphan-control ACK is retried after reopen without native work', async t => {
+  const f = fixture(t);
+  f.state.deliveries = [{ id: 243, kind: 'cancel', task: structuredClone(f.task), event: {} }];
+  f.task.status = 'canceled'; f.faults.ackLost = true;
+  await assert.rejects(f.loop.tick());
+  assert.equal(f.journal.deliveries().length, 1); assert.deepEqual(f.calls.ack, []);
+  f.reopen(); await f.loop.tick();
+  assert.equal(f.calls.get, 2); assert.deepEqual(f.calls.ack, [243]);
+  assert.deepEqual(f.journal.deliveries(), []); assert.equal(f.journal.get(f.task.id), undefined);
+  assert.equal(f.calls.nativeStart, 0); assert.equal(f.calls.cancel, 0);
+});
+test('lost ACK response after Server commit still marks the original delivery locally', async t => {
+  const f = fixture(t);
+  f.state.deliveries = [{ id: 243, kind: 'cancel', task: structuredClone(f.task), event: {} }];
+  f.task.status = 'canceled'; f.faults.ackResponseLostAfterCommit = true;
+  await assert.rejects(f.loop.tick());
+  assert.deepEqual(f.calls.ack, [243]); assert.equal(f.journal.deliveries().length, 1);
+  f.reopen(); await f.loop.tick();
+  assert.equal(f.calls.ackAttempts, 2); assert.deepEqual(f.calls.ack, [243]);
+  assert.deepEqual(f.journal.deliveries(), []); assert.equal(f.journal.get(f.task.id), undefined);
+  assert.equal(f.calls.nativeStart, 0); assert.equal(f.calls.cancel, 0);
 });
 test('unacknowledged control is not invoked twice after restart', async t => {
   const f = fixture(t); await f.loop.tick();

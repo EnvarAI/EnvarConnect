@@ -179,6 +179,18 @@ export class ConnectorLoop {
       for (const delivery of this.journal.deliveries()) {
         const record = this.journal.get(delivery.task.id);
         if (delivery.kind === 'task' && record?.phase !== 'terminal') continue;
+        if (['input', 'cancel'].includes(delivery.kind) && !record) {
+          // A pre-admission cancellation has no local execution to control.
+          // The delivery snapshot can be stale; only the original Server Task
+          // can prove that this control is now safe to acknowledge.
+          const current = await this.client.get(delivery.task.id);
+          if (current.id !== delivery.task.id || current.target_agent_id !== this.journal.binding.agentId ||
+              current.connection_id !== this.journal.binding.connectionId)
+            throw new Error('The original control Task binding changed');
+          if (!terminal.has(current.status)) continue;
+          await this.client.acknowledge(delivery.id); this.journal.acknowledge(delivery.id);
+          continue;
+        }
         if (['input', 'cancel'].includes(delivery.kind) && record?.phase !== 'terminal') {
           if (!record?.reference || record.pendingReport) continue;
           const control = this.journal.control(delivery.id);
