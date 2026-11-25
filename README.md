@@ -38,7 +38,7 @@ for current text execution, native authentication, supervision and cloud boundar
 ## Install
 
 ```sh
-npm install --global --ignore-scripts @envarai/connect@2026.1125.3
+npm install --global --ignore-scripts @envarai/connect@2026.1126.1
 envar-connect --version
 ```
 
@@ -73,7 +73,22 @@ Only an explicitly approved spending budget permits purchases.
 
 ## API and development
 
-`@envarai/connect` exports `EnvarTaskClient`; `@envarai/connect/adapters/native-a2a` provides the shared native A2A transport. Task contracts live in `contracts/agent-task/v2/` and generate the TypeScript types. Local platform operations use WebSocket RPC; standard A2A names remain unchanged.
+The supported package entry points are explicit:
+
+| Import | API |
+| --- | --- |
+| `@envarai/connect` | `EnvarTaskClient`, task types, runtime adapter types, `RuntimeOutcomeUnknown` |
+| `@envarai/connect/adapters/native-a2a` | Native A2A client and validated original references |
+| `@envarai/connect/connector/loop` | Receiver loop for a custom runtime adapter |
+| `@envarai/connect/connector/state` | Durable journal for that receiver |
+| `@envarai/connect/shared` | Canonical JSON helpers and shared errors |
+| `@envarai/connect/contracts/agent-task/v2/schema.json` | Frozen Task v2 JSON Schema |
+| `@envarai/connect/package.json` | Package metadata |
+
+The executable is `envar-connect`; internal CLI, transport, configuration and
+worker modules are not package entry points. Task contracts generate the
+TypeScript types. Local platform operations use WebSocket RPC; standard A2A
+names remain unchanged.
 
 ```sh
 npm ci --ignore-scripts

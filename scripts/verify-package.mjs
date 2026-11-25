@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
 import { validateVersion } from './release-version.mjs';
 const directory = resolve(process.argv[2]);
@@ -18,7 +19,43 @@ const root = mkdtempSync(join(tmpdir(), 'envar-connect-package-'));
 try {
   writeFileSync(join(root, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
   execFileSync('npm', ['install', '--offline', '--cache', join(root, 'empty-cache'), '--ignore-scripts', '--no-audit', '--no-fund', tarball], { cwd: root, stdio: 'inherit' });
-  execFileSync(process.execPath, ['--input-type=module', '-e', "import {EnvarTaskClient} from '@envarai/connect'; import {NativeA2AClient} from '@envarai/connect/adapters/native-a2a'; import {runUnifiedCli} from '@envarai/connect/connector/unified-cli'; import {SocketTransport} from '@envarai/connect/connector/transport'; import {digest,CommerceError} from '@envarai/connect/shared'; if(!EnvarTaskClient||!NativeA2AClient||!runUnifiedCli||!SocketTransport||!digest||!CommerceError)throw Error('Missing public API');"], { cwd: root, stdio: 'inherit' });
+  execFileSync(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import { createRequire } from 'node:module';
+    import { readFileSync } from 'node:fs';
+    import { EnvarTaskClient, RuntimeOutcomeUnknown } from '@envarai/connect';
+    import { NativeA2AClient } from '@envarai/connect/adapters/native-a2a';
+    import { ConnectorLoop } from '@envarai/connect/connector/loop';
+    import { ConnectorJournal } from '@envarai/connect/connector/state';
+    import { digest, CommerceError } from '@envarai/connect/shared';
+    assert.ok(EnvarTaskClient && RuntimeOutcomeUnknown && NativeA2AClient && ConnectorLoop && ConnectorJournal && digest && CommerceError);
+    const require = createRequire(import.meta.url);
+    const schema = JSON.parse(readFileSync(require.resolve('@envarai/connect/contracts/agent-task/v2/schema.json')));
+    assert.ok(schema.$defs.task);
+    assert.equal(require('@envarai/connect/package.json').name, '@envarai/connect');
+    for (const entry of ['connector/client', 'connector/unified-cli', 'connector/transport', 'connector/config', 'connector/relay-loop', 'connector/mcp', 'adapters/cli-worker', 'adapters/configure-native', 'contracts/agent-task/v2/README.md']) {
+      await assert.rejects(import('@envarai/connect/' + entry), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
+    }
+  `], { cwd: root, stdio: 'inherit' });
+  const consumer = join(root, 'consumer.ts');
+  writeFileSync(consumer, `
+    import { EnvarTaskClient, RuntimeOutcomeUnknown, type RuntimeAdapter, type Task } from '@envarai/connect';
+    import { ConnectorLoop } from '@envarai/connect/connector/loop';
+    import { ConnectorJournal } from '@envarai/connect/connector/state';
+    import { NativeA2AClient, type NativeTaskReference } from '@envarai/connect/adapters/native-a2a';
+    declare const client: EnvarTaskClient;
+    declare const adapter: RuntimeAdapter;
+    declare const journal: ConnectorJournal;
+    declare const task: Task;
+    declare const native: NativeA2AClient;
+    declare const reference: NativeTaskReference;
+    new ConnectorLoop(client, adapter, journal);
+    adapter.start(task, task.id);
+    native.read(reference);
+    new RuntimeOutcomeUnknown();
+  `);
+  const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url));
+  execFileSync(process.execPath, [compiler, '--noEmit', '--skipLibCheck', '--module', 'NodeNext', '--moduleResolution', 'NodeNext', '--target', 'ES2022', consumer], { cwd: root, stdio: 'inherit' });
   const cli = join(root, 'node_modules/@envarai/connect/dist/cli.js');
   assert.equal(execFileSync(process.execPath, [cli, '--version'], { encoding: 'utf8' }).trim(), pkg.version);
   const help = JSON.parse(execFileSync(process.execPath, [cli, '--help'], { encoding: 'utf8' }));

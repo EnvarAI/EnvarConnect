@@ -7,3 +7,8 @@ Keep task identities, durable recovery, owner-scoped authorization and local cre
 Start with the [code map and adapter contract](docs/adapter-development.md), then pick a [scoped contribution brief](docs/contribution-tasks.md). Include a reproduction, file locations, expected original-task behavior and acceptance commands. Public tests use isolated fixtures and need no production account.
 
 Package and website versions have separate release owners; see [compatibility](docs/compatibility.md). The normal test suite checks current install examples against package.json.
+
+Handwritten TypeScript uses the checked-in Prettier configuration. Run
+`npm run format` after editing it; `npm test` checks formatting before the normal
+build and test discovery. Generated Task types keep the schema generator's
+format and are checked by that generator.

@@ -5,8 +5,18 @@ import type { RelayReference } from '../connector/relay-types.js';
 export interface RelayRuntime {
   version?: '1' | '2';
   cardDigest(): Promise<string>;
-  prepareSend?(params: Record<string, unknown>, execution?: { taskId: string; contextId: string }): Promise<() => ReturnType<RelayRuntime['send']>>;
-  send(params: Record<string, unknown>, execution?: { taskId: string; contextId: string }): Promise<{ task?: Record<string, unknown>; message?: Record<string, unknown>; reference?: RelayReference }>;
+  prepareSend?(
+    params: Record<string, unknown>,
+    execution?: { taskId: string; contextId: string },
+  ): Promise<() => ReturnType<RelayRuntime['send']>>;
+  send(
+    params: Record<string, unknown>,
+    execution?: { taskId: string; contextId: string },
+  ): Promise<{
+    task?: Record<string, unknown>;
+    message?: Record<string, unknown>;
+    reference?: RelayReference;
+  }>;
   read(reference: RelayReference): Promise<Record<string, unknown>>;
 }
 
@@ -21,7 +31,11 @@ export interface RuntimeReadiness {
   runtimeVersion: string;
   capabilities: { recover: boolean; input: boolean; cancel: boolean };
   /** Separate guarantees; a live Task lookup does not prove restart recovery. */
-  recovery?: { taskLookupAfterRestart: boolean; executionKeyLookup: boolean; resultPersistence: boolean };
+  recovery?: {
+    taskLookupAfterRestart: boolean;
+    executionKeyLookup: boolean;
+    resultPersistence: boolean;
+  };
   maxConcurrency?: number;
   versionSource?: 'agent_card' | 'cli_version';
   receiverSupervised?: boolean;
@@ -41,13 +55,19 @@ export interface RuntimeAdapter {
   start(task: Task, executionKey: string): Promise<RuntimeObservation>;
   /** Observes only the original validated reference, without creating another execution. */
   observe(reference: RuntimeReference): Promise<RuntimeObservation>;
-  provideInput(reference: RuntimeReference, operationId: string, text: string): Promise<RuntimeObservation>;
+  provideInput(
+    reference: RuntimeReference,
+    operationId: string,
+    text: string,
+  ): Promise<RuntimeObservation>;
   cancel(reference: RuntimeReference, operationId: string): Promise<RuntimeObservation>;
   close(): Promise<void>;
 }
 
 export class RuntimeOutcomeUnknown extends Error {
   constructor(public readonly code = 'runtime_outcome_unknown') {
-    super('Original runtime outcome is unknown. Preserve its execution reference; do not resubmit.');
+    super(
+      'Original runtime outcome is unknown. Preserve its execution reference; do not resubmit.',
+    );
   }
 }
