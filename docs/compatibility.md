@@ -1,6 +1,6 @@
 # WebSocket release boundary
 
-Install `@envarai/connect@2026.1125.2` together with the matching EnvarAI release.
+Install `@envarai/connect@2026.1125.3` together with the matching EnvarAI release.
 This release intentionally has no legacy server negotiation or HTTP polling
 fallback. An existing version-2 connection keeps its identity and credential.
 Connect backs up and migrates its private SQLite journal in place before use;
@@ -21,5 +21,10 @@ execution references. An A2A task reference must not be fabricated for a CLI.
 A runtime capability such as input, cancellation or restart lookup is available
 only when its adapter actually implements it. WebSocket support does not enable
 additional native runtime capabilities.
+
+A control message for a task canceled before native admission may arrive without
+a local execution record. Connect reads the original server task before clearing
+that message. An unknown or still-running task stays unacknowledged, and Connect
+does not start a replacement native execution or replay the control.
 
 Use standalone Connect for current receiving; preserve original execution journals for recovery.
