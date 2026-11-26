@@ -1,6 +1,6 @@
 # WebSocket release boundary
 
-Install `@envarai/connect@2026.1125.3` together with the matching EnvarAI release.
+Install `@envarai/connect@2026.1126.1` together with the matching EnvarAI release.
 This release intentionally has no legacy server negotiation or HTTP polling
 fallback. An existing version-2 connection keeps its identity and credential.
 Connect backs up and migrates its private SQLite journal in place before use;
@@ -28,3 +28,13 @@ that message. An unknown or still-running task stays unacknowledged, and Connect
 does not start a replacement native execution or replay the control.
 
 Use standalone Connect for current receiving; preserve original execution journals for recovery.
+
+## Explicit package imports
+
+Wildcard `connector/*`, `adapters/*` and `contracts/*` exports have been removed.
+Use the [supported entry points](../README.md#api-and-development). Import
+`EnvarTaskClient` and runtime types from `@envarai/connect`, invoke the CLI through
+`envar-connect`, and use the explicit loop/journal exports when assembling a
+custom receiver. Importing other internal modules now fails with
+`ERR_PACKAGE_PATH_NOT_EXPORTED`. This packaging change does not change the
+WebSocket protocol or the original journal schema.

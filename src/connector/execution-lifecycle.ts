@@ -9,10 +9,19 @@ export class ExecutionLifecycle {
   async observe<T>(operation: () => Promise<T>): Promise<T> {
     let active: Promise<void> | undefined;
     const timer = setInterval(() => {
-      if (!active) active = this.lease().catch(this.leaseFailed).finally(() => { active = undefined; });
+      if (!active)
+        active = this.lease()
+          .catch(this.leaseFailed)
+          .finally(() => {
+            active = undefined;
+          });
     }, this.interval);
-    try { return await operation(); }
-    finally { clearInterval(timer); await active; }
+    try {
+      return await operation();
+    } finally {
+      clearInterval(timer);
+      await active;
+    }
   }
 
   /** Commit the existing journal marker before exposing the one native dispatch. */
@@ -20,7 +29,10 @@ export class ExecutionLifecycle {
     persistIntent();
     let invoked = false;
     return () => {
-      if (invoked) throw new Error('This native dispatch was already attempted. Recover the original execution.');
+      if (invoked)
+        throw new Error(
+          'This native dispatch was already attempted. Recover the original execution.',
+        );
       invoked = true;
       return this.observe(operation);
     };

@@ -13,6 +13,12 @@ Start with the existing interfaces, rather than inventing another task protocol:
 | `src/connector/state.ts` | Durable journal and original runtime binding |
 | `contracts/agent-task/v2/schema.json` | Public task/report contract |
 
+For package consumers, import `RuntimeAdapter` and `RuntimeOutcomeUnknown` from
+`@envarai/connect`, `ConnectorLoop` from `@envarai/connect/connector/loop`, and
+`ConnectorJournal` from `@envarai/connect/connector/state`. The CLI and native
+configuration modules are implementation details; use the `envar-connect` binary
+for enrollment and local configuration.
+
 ## Adapter contract
 
 - `probe()` reports the runtime and capabilities it can actually demonstrate.

@@ -1,6 +1,6 @@
 {
   "name": "@envarai/connect",
-  "version": "2026.1125.3",
+  "version": "2026.1126.1",
   "description": "Connect your own Agent to Envar: tasks, native adapters and recovery",
   "type": "module",
   "license": "MIT",
@@ -12,19 +12,23 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./connector/*": {
-      "types": "./dist/connector/*.d.ts",
-      "import": "./dist/connector/*.js"
+    "./adapters/native-a2a": {
+      "types": "./dist/adapters/native-a2a.d.ts",
+      "import": "./dist/adapters/native-a2a.js"
     },
-    "./adapters/*": {
-      "types": "./dist/adapters/*.d.ts",
-      "import": "./dist/adapters/*.js"
+    "./connector/loop": {
+      "types": "./dist/connector/loop.d.ts",
+      "import": "./dist/connector/loop.js"
+    },
+    "./connector/state": {
+      "types": "./dist/connector/state.d.ts",
+      "import": "./dist/connector/state.js"
     },
     "./shared": {
       "types": "./dist/shared/index.d.ts",
       "import": "./dist/shared/index.js"
     },
-    "./contracts/*": "./contracts/*",
+    "./contracts/agent-task/v2/schema.json": "./contracts/agent-task/v2/schema.json",
     "./package.json": "./package.json"
   },
   "files": [
@@ -46,9 +50,11 @@
   },
   "scripts": {
     "build": "node scripts/generate-task-contract.mjs --check && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
-    "test": "npm run build && node --test test/*.test.mjs scripts/release.test.mjs",
+    "test": "npm run format:check && npm run build && node --test test/*.test.mjs scripts/release.test.mjs",
     "prepack": "npm run build",
-    "version:date": "node scripts/release-version.mjs"
+    "version:date": "node scripts/release-version.mjs",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\""
   },
   "dependencies": {
     "@a2a-js/sdk": "1.2.1",
@@ -64,7 +70,8 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.2",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "prettier": "3.8.3"
   },
   "bin": {
     "envar-connect": "dist/cli.js"
